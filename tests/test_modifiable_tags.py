@@ -14,7 +14,7 @@ import pytest
 from psycopg.rows import dict_row
 
 from src.config import Database
-from src.matching import matched_poi_sql
+from src.matching import Tags, matched_poi_sql
 from src.phone import ensure_normalize_phone
 from tests.conftest import Connection
 
@@ -184,3 +184,77 @@ def test_a_week_the_comparison_cannot_read_is_never_proposed(places: Connection)
     ):
         tags, flag = modifiable(places, {"opening_hours": old}, opening_hours="Mo-Fr 08:00-19:00")
         assert (tags, flag) == ({}, False), old
+
+
+def nsi_case_fix(conn: Connection, osm_tags: dict[str, str], *items: tuple[str, str, str]) -> Tags:
+    """What wave 2 proposes from NSI, given its (brand, name, shop) items for Q1."""
+    conn.execute("TRUNCATE nsi_brands")
+    for brand, name, shop in items:
+        conn.execute(
+            "INSERT INTO nsi_brands VALUES ('Q1', %s, %s, 'shop', %s, '{}'::jsonb)",
+            (brand, name, shop),
+        )
+    tags, _ = modifiable(conn, osm_tags)
+    return tags or {}
+
+
+@pytest.mark.parametrize(
+    ("osm_tags", "items", "expected"),
+    [
+        pytest.param(
+            {"shop": "supermarket", "brand": "lidl", "name": "LIDL"},
+            [("Lidl", "Lidl", "supermarket")],
+            {"brand": "Lidl", "name": "Lidl"},
+            id="both-differ-by-case",
+        ),
+        pytest.param(
+            {"shop": "supermarket", "brand": "Lidl", "name": "lidl"},
+            [("Lidl", "Lidl", "supermarket")],
+            {"name": "Lidl"},
+            id="only-the-name-differs",
+        ),
+        pytest.param(
+            {"shop": "supermarket", "brand": "Lidl", "name": "Lidl"},
+            [("Lidl", "Lidl", "supermarket")],
+            {},
+            id="already-the-nsi-spelling",
+        ),
+        pytest.param(
+            {"shop": "bank", "brand": "SG", "name": "SG"},
+            [("Société Générale", "Société Générale", "bank")],
+            {},
+            id="another-word-is-a-divergence-not-a-spelling",
+        ),
+        pytest.param(
+            {"shop": "supermarket", "brand": "lidl"},
+            [("Lidl", "Lidl", "supermarket"), ("LIDL", "LIDL", "supermarket")],
+            {},
+            id="two-competing-spellings-decide-nothing",
+        ),
+        pytest.param(
+            {"shop": "supermarket", "brand": "Lidl"},
+            [("Lidl", "Lidl", "supermarket"), ("LIDL", "LIDL", "supermarket")],
+            {},
+            id="a-spelling-nsi-knows-is-left-alone",
+        ),
+        pytest.param(
+            {"shop": "convenience", "brand": "lidl"},
+            [("Lidl", "Lidl", "supermarket")],
+            {},
+            id="another-category-is-not-this-brand",
+        ),
+        pytest.param(
+            {"brand": "lidl"},
+            [("Lidl", "Lidl", "supermarket")],
+            {},
+            id="no-primary-tag-no-category-to-read",
+        ),
+    ],
+)
+def test_nsi_corrects_a_spelling_that_differs_by_case_only(
+    places: Connection,
+    osm_tags: dict[str, str],
+    items: list[tuple[str, str, str]],
+    expected: dict[str, str],
+) -> None:
+    assert nsi_case_fix(places, osm_tags, *items) == expected

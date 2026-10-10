@@ -323,6 +323,14 @@ def _review_item(item: Change) -> dict[str, Any]:
             if key == "opening_hours"
         },
         "other_new_tags": {key: tag[key] for key in written_keys if key not in shown},
+        # What the object already carries and the change leaves alone, minus
+        # what the dedicated rows display: the context a reviewer needs to
+        # judge a complex match (primary tag, operator, addr:*, a rival brand).
+        "untouched_tags": {
+            key: value
+            for key, value in old_tag.items()
+            if key not in shown and key not in replaced_keys
+        },
     }
 
 

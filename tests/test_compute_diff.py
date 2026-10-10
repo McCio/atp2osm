@@ -134,6 +134,27 @@ def test_apply_on_node_respects_not_key_on_a_writable_tag() -> None:
     assert match({"not:fuel:diesel": "yes"}, writable_tags={"fuel:diesel": "yes"}) is None
 
 
+def test_apply_on_node_wave_2_rewrites_the_spelling_nsi_gave() -> None:
+    row = {
+        "osm_id": 1,
+        "version": 1,
+        "node_type": "node",
+        "tags": {"shop": "supermarket", "brand": "lidl", "name": "LIDL"},
+        "modifiable_tags": {"brand": "Lidl", "name": "Lidl"},
+        "lon": 1,
+        "lat": 2,
+        "brand": "lidl",
+        "id": "atp-1",
+        "source_uri": None,
+        "source_type": "spider",
+        "postcode": None,
+        "subdivision_code": "75",
+        "subdivision_name": "Paris",
+    }
+    res = one(apply_on_node(row, wave=2))
+    assert res["tag"] == {"shop": "supermarket", "brand": "Lidl", "name": "Lidl"}
+
+
 def test_apply_on_node_wave_2_writes_neither_identifiers_nor_writable_tags() -> None:
     row = {
         "osm_id": 1,

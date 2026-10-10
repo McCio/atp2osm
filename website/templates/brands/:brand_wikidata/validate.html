@@ -274,6 +274,20 @@
                 </div>
                 {% endif %}
 
+                {% if item['untouched_tags'] %}
+                <div class="flex items-start">
+                    <i class="iconoir-label mr-2 mt-1" aria-hidden="true"></i>
+                    <div class="muted">
+                        <strong>{{ _('Already in OpenStreetMap, left as is:') }}</strong>
+                        <ul class="font-mono text-xs break-all">
+                            {% for key, value in item['untouched_tags'].items() %}
+                            <li>{{ key }} = {{ value }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                {% endif %}
+
                 <div class="text-xs muted mt-1 flex flex-col gap-0.5">
                     <span><i class="iconoir-database" aria-hidden="true"></i> <strong class="font-mono">ATP</strong>
                         <code>{{ item['spider_id'] }}/{{ item['atp_id'] }}</code></span>

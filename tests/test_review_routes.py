@@ -341,6 +341,26 @@ def test_an_unchanged_tag_is_not_announced(
     assert item["diff"] == {}
 
 
+def test_the_tags_left_alone_are_shown_as_context(
+    contributor: FlaskClient,
+    brand: Connection,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered: Rendered,
+) -> None:
+    give(brand, 1, [("75", 1)])
+    old = {"brand": "Babylone", "shop": "clothes", "operator": "Zorglub SA", "addr:city": "Paris"}
+    stage(monkeypatch, [change(1, {**old, "phone": "+33 1 00 00 00 00"}, old)])
+    res = contributor.get("/brands/Q1/validate")
+    _, context = next(c for c in rendered if c[0].endswith("validate.html"))
+    (item,) = context["items"]
+    assert item["untouched_tags"] == {
+        "shop": "clothes",
+        "operator": "Zorglub SA",
+        "addr:city": "Paris",
+    }
+    assert "Zorglub SA" in res.text
+
+
 def test_a_contact_variant_replaced_beside_the_plain_key_is_shown_too(
     contributor: FlaskClient,
     brand: Connection,

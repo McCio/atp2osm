@@ -550,6 +550,29 @@ Deux conséquences :
   vaut `amenity`, `tourism`, `office` ou `leisure`. Elle reste lue et utilisée
   comme discriminant dans tous les cas.
 
+### 5.1 Exception : `brand` et `name` ne différant que par la casse
+
+`name` et `brand` restent hors de la liste : leurs écarts sont des divergences
+de fond (`SG`/`Société Générale`), pas du bruit. Mais un écart **de casse
+seulement** (`lidl`/`Lidl`, `LIDL`/`Lidl`) est une graphie, pas une divergence
+— c'est du reste ce que l'appariement par libellé (§3.1) ignore déjà. Dans ce
+cas, et dans ce cas seul, la valeur de Name Suggestion Index remplace celle de
+l'objet, en **vague 2** (remplacement d'une valeur existante, donc soumis à
+`protect_recent_edits`) :
+
+- l'objet porte un `brand:wikidata` (le sien ou celui retrouvé au §3.1) et une
+  clé principale, qui désignent des items `nsi_brands` d'une même catégorie ;
+- le `brand` (resp. `name`) de l'objet égale, à la casse près, le libellé d'au
+  moins un de ces items, et **un seul libellé distinct** convient — deux items
+  de même catégorie aux casses concurrentes (`Lidl`/`LIDL`) ne tranchent rien ;
+- aucun item ne porte déjà exactement la valeur de l'objet : une graphie que
+  Name Suggestion Index connaît n'est pas corrigée.
+
+Les libellés sont lus dans `nsi_brands` (qui les garde hors de `tags`, §2.3) par
+la fonction SQL `nsi_case_fix`, appelée par `modifiable_tags` dans
+`MATCHED_POI_SQL` : le décompte de la liste des marques et le diff de `/validate`
+lisent donc la même décision.
+
 ---
 
 ## 6. Tests

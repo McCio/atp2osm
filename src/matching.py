@@ -133,7 +133,8 @@ MATCHED_POI_SQL: Final = """
                 WHERE osm.tags ->> w.tag IS DISTINCT FROM w.value
             )
         ) AS is_importable,
-        -- Wave 2: the tags whose value ATP would replace, key -> ATP value.
+        -- Wave 2: the tags whose value would be replaced, key -> new value
+        -- (ATP's, or NSI's for the case of a brand or a name).
         -- Computed here rather than in Python so that a single expression
         -- decides both the count on the brand list and the diff /validate
         -- shows — and so that the phone comparison keeps using
@@ -170,7 +171,14 @@ MATCHED_POI_SQL: Final = """
                     LOWER(REGEXP_REPLACE(osm.tags->>'website', '^https?://', '', 'i'))
                         <> LOWER(REGEXP_REPLACE(atp.website, '^https?://', '', 'i'))
                     OR LOWER(REGEXP_REPLACE(osm.tags->>'contact:website', '^https?://', '', 'i'))
-                        <> LOWER(REGEXP_REPLACE(atp.website, '^https?://', '', 'i')))
+                        <> LOWER(REGEXP_REPLACE(atp.website, '^https?://', '', 'i'))),
+                -- These two take NSI's value, not ATP's: its spelling of the
+                -- brand and the name, where the object's differs by case
+                -- alone (spec 02 §5.1). nsi_case_fix is NULL otherwise.
+                ('brand', nsi_case_fix(osm.brand_wikidata, osm_primary_tag(osm.tags),
+                    'brand', osm.tags->>'brand'), TRUE),
+                ('name', nsi_case_fix(osm.brand_wikidata, osm_primary_tag(osm.tags),
+                    'name', osm.tags->>'name'), TRUE)
             ) AS t(key, atp_value, differs)
             WHERE t.atp_value IS NOT NULL AND t.differs
         ) AS modifiable_tags,

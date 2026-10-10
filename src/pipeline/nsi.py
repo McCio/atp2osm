@@ -54,7 +54,9 @@ logger = logging.getLogger(__name__)
 # where the ground carries the real, more precise entity (Crédit Mutuel de
 # Bretagne, Banque Populaire Alsace Lorraine Champagne), and NSI leads or trails
 # rebrandings (SG / Société Générale, TotalEnergies / Total). Writing them would
-# destroy better information than ours.
+# destroy better information than ours. A spelling that differs by case alone is
+# no such disagreement: wave 2 corrects it from the labels nsi_brands keeps
+# (`nsi_case_fix`, spec 02 §5.1), outside this list.
 #
 # The primary keys (shop, amenity, office, tourism, leisure, healthcare, craft)
 # measure 100% by construction: nsi_match already drops a primary key the object

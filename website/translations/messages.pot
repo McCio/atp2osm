@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: atp2osm VERSION\n"
 "Report-Msgid-Bugs-To: https://github.com/hagatopaxi/atp2osm-import/issues\n"
-"POT-Creation-Date: 2026-10-10 16:07+0200\n"
+"POT-Creation-Date: 2026-10-10 17:40+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -659,7 +659,7 @@ msgid "Computing the missing tags"
 msgstr ""
 
 #: website/templates/docs.html:171
-msgid "For every match kept, the tool computes which tags exist in ATP but not in OpenStreetMap. Wave 1 offers only the missing ones: <strong>an existing tag is not changed</strong>, except the stable tags (the fuels a station sells, say) of a source measured to agree with OpenStreetMap, which replace a different value. Wave 2 replaces values. A value a mapper posted recently is never replaced."
+msgid "For every match kept, the tool computes which tags exist in ATP but not in OpenStreetMap. Wave 1 offers only the missing ones: <strong>an existing tag is not changed</strong>, except the stable tags (the fuels a station sells, say) of a source measured to agree with OpenStreetMap, which replace a different value. Wave 2 replaces values, and gives a brand or a name the capitalisation of the Name Suggestion Index when that is all that differs. A value a mapper posted recently is never replaced."
 msgstr ""
 
 #: website/templates/docs.html:176
@@ -1557,7 +1557,7 @@ msgstr ""
 
 #: website/templates/brands/:brand_wikidata/confirm.html:97
 #: website/templates/brands/:brand_wikidata/rejected.html:23
-#: website/templates/brands/:brand_wikidata/validate.html:343
+#: website/templates/brands/:brand_wikidata/validate.html:357
 #: website/templates/todo.html:190
 msgid "Cancel"
 msgstr ""
@@ -1859,40 +1859,44 @@ msgstr ""
 msgid "Other tags"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/validate.html:289
+#: website/templates/brands/:brand_wikidata/validate.html:281
+msgid "Already in OpenStreetMap, left as is:"
+msgstr ""
+
+#: website/templates/brands/:brand_wikidata/validate.html:303
 #, python-format
 msgid "Map of %(title)s"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/validate.html:292
+#: website/templates/brands/:brand_wikidata/validate.html:306
 msgid "View in OSM"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/validate.html:302
+#: website/templates/brands/:brand_wikidata/validate.html:316
 msgid "Reject"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/validate.html:307
+#: website/templates/brands/:brand_wikidata/validate.html:321
 msgid "Accept"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/validate.html:313
+#: website/templates/brands/:brand_wikidata/validate.html:327
 msgid "Check the source before accepting."
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/validate.html:325
+#: website/templates/brands/:brand_wikidata/validate.html:339
 msgid "Go to the next step"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/validate.html:332
+#: website/templates/brands/:brand_wikidata/validate.html:346
 msgid "Why are you rejecting this data?"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/validate.html:340
+#: website/templates/brands/:brand_wikidata/validate.html:354
 msgid "Explain here…"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/validate.html:342
+#: website/templates/brands/:brand_wikidata/validate.html:356
 msgid "Submit"
 msgstr ""
 
