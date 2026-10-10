@@ -219,6 +219,18 @@ with the same rules every wave-1 write already follows:
 - Wave 2 (`modifiable_tags`) does not grow: replacing a contributor's
   fuel list is a different argument than filling an absent one.
 
+Like `nsi_writable_tags`, the list is **measured, not guessed** — the
+calibration script is the twin of `scripts/calibrate_nsi_tags.py` and
+lands after the machinery it measures (§9): it matches the country's
+`atp_places` against OSM (the existing `MATCHED_POI_SQL`, no upload),
+joins `writable_tags` with `osm.tags` on matched pairs, and reports, per
+(spider, tag), the share of pairs where OSM already carries the tag with
+the same value — agreement, the same statistic the NSI script computes.
+A registry's `fuel:*` is expected to measure high; a crowd-sourced
+spider's to land where it lands, which is the point of measuring. The
+script writes `atp_writable_tags` above a threshold, nobody copies a
+rate by hand, and a new ATP release is re-evaluated by rerunning it.
+
 ---
 
 ## 7. Cooldown, history, brand list — unchanged
@@ -263,6 +275,9 @@ One reviewable step each, each green (ruff, `pyright --strict`, suite):
 4. **Writer + filters**: `apply_on_node` (§4c/§6), `generic.lua` and
    `mv_places` lists.
 5. **Receipt run** on dev data: §8 controls.
+6. **Calibration**: `scripts/calibrate_atp_tags.py` — per-(spider, tag)
+   agreement over matched pairs, writing `atp_writable_tags` (§6). Needs
+   slices 2–4 to have run once; measures what they produce.
 
 Each slice MERGE-worthy independently; none leaves the site broken
 mid-sequence (columns bridged before they are read).
