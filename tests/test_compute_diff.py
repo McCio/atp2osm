@@ -117,8 +117,21 @@ def test_apply_on_node_respects_not_key_on_an_identifier() -> None:
 
 
 def test_apply_on_node_writes_the_writable_tags_the_object_lacks() -> None:
+    res = one(match({"amenity": "fuel"}, writable_tags={"fuel:lpg": "yes"}))
+    assert res["tag"] == {"amenity": "fuel", "fuel:lpg": "yes"}
+
+
+def test_apply_on_node_replaces_a_different_writable_tag() -> None:
     res = one(match({"fuel:diesel": "no"}, writable_tags={"fuel:diesel": "yes", "fuel:lpg": "yes"}))
-    assert res["tag"] == {"fuel:diesel": "no", "fuel:lpg": "yes"}
+    assert res["tag"] == {"fuel:diesel": "yes", "fuel:lpg": "yes"}
+
+
+def test_apply_on_node_proposes_nothing_for_a_writable_tag_already_equal() -> None:
+    assert match({"fuel:diesel": "yes"}, writable_tags={"fuel:diesel": "yes"}) is None
+
+
+def test_apply_on_node_respects_not_key_on_a_writable_tag() -> None:
+    assert match({"not:fuel:diesel": "yes"}, writable_tags={"fuel:diesel": "yes"}) is None
 
 
 def test_apply_on_node_wave_2_writes_neither_identifiers_nor_writable_tags() -> None:

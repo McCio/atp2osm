@@ -161,7 +161,7 @@ In development the version is a constant, so nothing rebuilds on its own: rerun 
 
 **Core modules:**
 - `src/matching.py` — Spatial join queries between `mv_places` and `atp_places` (`MATCHED_POI_SQL`, shared with the `mv_places_brand` view and never duplicated), tag diffing logic (`apply_on_node`), batch composition (`pack_subdivisions`, `select_batch`), the `WAVES` list and the cooldown SQL it keys, stats aggregation
-- `src/osm_history.py` — Wave 2's guard: dates the current value of each tag a diff would overwrite, through the OSM API, and leaves alone what a human posted within `app.recent_edit_weeks`
+- `src/osm_history.py` — The recent-edit guard, for any wave whose diff replaces a value (wave 2, and wave 1's `atp_writable_tags`): dates the current value of each tag a diff would overwrite, through the OSM API, and leaves alone what a human posted within `app.recent_edit_weeks`
 - `src/upload.py` — `BulkUpload` class that creates OSM changesets grouped by subdivision, uploads via `osmapi`
 - `src/migrate.py` — Simple sequential SQL migration runner
 

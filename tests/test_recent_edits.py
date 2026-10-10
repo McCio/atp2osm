@@ -1,4 +1,5 @@
-"""Wave 2 never overwrites a value a human posted recently.
+"""A write never overwrites a value a human posted recently — wave 2, or the
+writable tags a source replaces on wave 1.
 
 The API is never called: the version list and the bot verdict are handed over
 directly, which is what the two functions under test read.
@@ -101,10 +102,26 @@ def test_an_old_object_costs_no_request(api: dict[str, Any]) -> None:
 
 
 def test_an_addition_is_never_protected(api: dict[str, Any]) -> None:
-    """Wave 1 overwrites nothing, so it asks nothing."""
+    """An addition overwrites nothing, so it asks nothing."""
     kept = protect_recent_edits([change({"phone": "0123456789"}, {}, RECENT)])
     assert api["calls"] == 0
     assert kept[0]["tag"] == {"phone": "0123456789"}
+
+
+def test_a_writable_tag_replacing_a_recent_human_value_is_kept(api: dict[str, Any]) -> None:
+    """The source's `fuel:diesel` yields to a mapper's survey; its `fuel:lpg` addition stands."""
+    api["history"] = [
+        {
+            "version": 1,
+            "timestamp": RECENT.isoformat(),
+            "changeset": 12,
+            "tags": {"fuel:diesel": "no"},
+        }
+    ]
+    kept = protect_recent_edits(
+        [change({"fuel:diesel": "yes", "fuel:lpg": "yes"}, {"fuel:diesel": "no"}, RECENT)]
+    )
+    assert kept[0]["tag"] == {"fuel:diesel": "no", "fuel:lpg": "yes"}
 
 
 def test_the_protection_is_per_tag_not_per_object(api: dict[str, Any]) -> None:

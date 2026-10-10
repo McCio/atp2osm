@@ -126,10 +126,11 @@ MATCHED_POI_SQL: Final = """
             )
             -- And a stable tag the source vouches for (atp_writable_tags,
             -- narrowed per spider by the loader): wave 1 writes it on a
-            -- matched object. Never a join arm above — it only fills.
+            -- matched object, replacing a different value. Never a join arm
+            -- above.
             OR EXISTS (
                 SELECT 1 FROM jsonb_each_text(atp.writable_tags) AS w(tag, value)
-                WHERE NOT osm.tags ? w.tag
+                WHERE osm.tags ->> w.tag IS DISTINCT FROM w.value
             )
         ) AS is_importable,
         -- Wave 2: the tags whose value ATP would replace, key -> ATP value.
@@ -173,6 +174,12 @@ MATCHED_POI_SQL: Final = """
             ) AS t(key, atp_value, differs)
             WHERE t.atp_value IS NOT NULL AND t.differs
         ) AS modifiable_tags,
+        -- An identifier pair equal: the one candidate the source itself names.
+        -- It outranks the nearest one and is never dropped as ambiguous (below).
+        EXISTS (
+            SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
+            WHERE osm.tags->>i.tag = i.value
+        ) AS identifier_match,
         ST_Distance(osm.geom::geography, ST_GeomFromGeoJSON(atp.geom)::geography) AS atp_distance,
         count(*) FILTER (WHERE osm.node_type = 'node')                 OVER (PARTITION BY atp.id) AS pt_cnt,
         count(*) FILTER (WHERE osm.node_type IN ('way', 'relation'))   OVER (PARTITION BY atp.id) AS poly_cnt
@@ -187,38 +194,53 @@ MATCHED_POI_SQL: Final = """
     WHERE
         {where_options} AND
         (
-            osm.brand_wikidata = atp.brand_wikidata
-            OR LOWER(osm.brand) = LOWER(atp.brand)
-            -- A name alone matches whatever else carries it nearby: the
-            -- board that signs the place, the landuse around it, anything
-            -- named after the same commune. Both sides know their primary
-            -- tag, so it has to be the same one — and when ATP carries none
-            -- (a POI in twenty), the name stands on its own as it always
-            -- did.
-            OR (
-                LOWER(osm.name) = LOWER(atp."name")
-                -- Cast: the DuckDB import writes the column as varchar[],
-                -- the migration that added it to the live table as text[].
-                AND (atp.category IS NULL
-                     OR atp.category::text[] = osm_primary_tag(osm.tags))
-            )
-            OR LOWER(osm.email) = LOWER(atp.email)
-            OR LOWER(REGEXP_REPLACE(osm.website, '^https?://', '', 'i')) = LOWER(REGEXP_REPLACE(atp.website, '^https?://', '', 'i'))
-            OR normalize_phone(osm.phone) = normalize_phone(atp.phone)
             -- An identifier names the place itself: any pair equal joins.
             -- The map is empty for a POI no configuration vouches for, and
             -- jsonb_each_text of it yields no row.
-            OR EXISTS (
+            EXISTS (
                 SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
                 WHERE osm.tags->>i.tag = i.value
+            )
+            OR (
+                -- No pair is equal here. An object that carries one of the
+                -- POI's identifier tags with another value is another place,
+                -- whatever brand or name says; one lacking the tag is not.
+                NOT EXISTS (
+                    SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
+                    WHERE osm.tags ? i.tag AND osm.tags->>i.tag <> i.value
+                )
+                AND (
+                    osm.brand_wikidata = atp.brand_wikidata
+                    OR LOWER(osm.brand) = LOWER(atp.brand)
+                    -- A name alone matches whatever else carries it nearby: the
+                    -- board that signs the place, the landuse around it, anything
+                    -- named after the same commune. Both sides know their primary
+                    -- tag, so it has to be the same one — and when ATP carries none
+                    -- (a POI in twenty), the name stands on its own as it always
+                    -- did.
+                    OR (
+                        LOWER(osm.name) = LOWER(atp."name")
+                        -- Cast: the DuckDB import writes the column as varchar[],
+                        -- the migration that added it to the live table as text[].
+                        AND (atp.category IS NULL
+                             OR atp.category::text[] = osm_primary_tag(osm.tags))
+                    )
+                    OR LOWER(osm.email) = LOWER(atp.email)
+                    OR LOWER(REGEXP_REPLACE(osm.website, '^https?://', '', 'i')) = LOWER(REGEXP_REPLACE(atp.website, '^https?://', '', 'i'))
+                    OR normalize_phone(osm.phone) = normalize_phone(atp.phone)
+                )
             )
         )
     )
     SELECT DISTINCT ON (osm_id, node_type, atp_brand_wikidata)
         *, modifiable_tags <> '{{}}'::jsonb AS is_modifiable
     FROM joined_poi
-    WHERE pt_cnt <= 1 AND poly_cnt <= 1
-    ORDER BY osm_id, node_type, atp_brand_wikidata, atp_distance
+    WHERE identifier_match OR (pt_cnt <= 1 AND poly_cnt <= 1)
+    -- A row that still has something to add first: a registry row that
+    -- already wrote its tags must not shadow, run after run, another
+    -- source's row of the same brand. Then the identifier, then the nearest.
+    ORDER BY osm_id, node_type, atp_brand_wikidata,
+             is_importable DESC, identifier_match DESC, atp_distance
 """
 
 
@@ -569,18 +591,29 @@ def apply_on_node(atp_osm_match: Mapping[str, Any], wave: int = 1) -> Change | N
     for key, value in nsi_tags.items():
         apply_tag(new_tags, key, value)
 
-    # The identifiers the source assigns and the stable tags it vouches for
-    # (the loader narrowed both per spider): written where absent, like the
-    # rest. An object carrying a different value for an identifier keeps it —
-    # a divergence for a reviewer, never a correction.
-    atp_tags: Tags = {
-        **(atp_osm_match.get("writable_tags") or {}),
-        **(atp_osm_match.get("identifiers") or {}),
-    }
-    for key, value in atp_tags.items():
-        apply_tag(new_tags, key, value)
+    _apply_source_tags(
+        new_tags,
+        atp_osm_match.get("identifiers") or {},
+        atp_osm_match.get("writable_tags") or {},
+    )
 
     return _change(atp_osm_match, new_tags)
+
+
+def _apply_source_tags(new_tags: Tags, identifiers: Tags, writables: Tags) -> None:
+    """What the source itself says about the object (the loader narrowed both per spider).
+
+    Identifiers are written where absent: an object carrying a different value
+    keeps it — a divergence for a reviewer, never a correction. The stable
+    tags the source vouches for replace the object's value: that is what
+    vouching means. Only a `not:` tag with the very same value stops one — a
+    contributor's explicit negation is a dispute for the reviewer.
+    """
+    for key, value in identifiers.items():
+        apply_tag(new_tags, key, value)
+    for key, value in writables.items():
+        if new_tags.get(f"not:{key}") != value:
+            new_tags[key] = value
 
 
 def _change(atp_osm_match: Mapping[str, Any], new_tags: Tags) -> Change | None:

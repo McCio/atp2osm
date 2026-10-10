@@ -247,7 +247,8 @@ def get_batch(brand_wikidata: str) -> Batch:
     excluded, replayed = read_excluded(brand_wikidata, categories)
     changes = select_batch(exclude_categories(matches, excluded), blocked, wave.batch_size)
     # A value a human posted recently is theirs, not ours. Costs no request on
-    # a wave that only adds tags, and one batch's worth on wave 2.
+    # a batch that only adds tags; wave 2 and the writable tags a source
+    # replaces on wave 1 cost one batch's worth.
     # Replayed on /validate, /confirm and /upload: a batch is one POI in alpha,
     # so the replay is cheap. Memoize it if the batch size is raised.
     changes = protect_recent_edits(changes)
@@ -257,7 +258,7 @@ def get_batch(brand_wikidata: str) -> Batch:
 
 @brands_bp.errorhandler(OsmApiUnavailableError)
 def osm_api_unavailable(error: OsmApiUnavailableError) -> ResponseReturnValue:
-    """Wave 2 could not date the values it would overwrite: nothing is decided,
+    """A batch could not date the values it would overwrite: nothing is decided,
     nothing is recorded. The reviewer comes back when the API does.
     """
     logger.warning("OSM API unavailable: %s", error)

@@ -161,6 +161,27 @@ and `text = jsonb` does not type-check. On an empty map it yields no rows,
 already in `mv_places`, and the tags a config may name (`ref:mise`,
 `ref:vat`, `ref`) are all in `tags` — the filter below keeps them (§4d).
 
+An identifier is exact, and the query treats it as exact in three more places
+— the receipt (§8) measured 421 of 2 334 identifier-equal objects paired with
+a neighbouring POI of the same brand instead, and 107 dropped:
+
+- **Veto**: when no identifier pair is equal and the object carries one of
+  the POI's identifier tags with another value, the attribute arms do not
+  join. The object says it is another place; brand or name agreeing does not
+  outweigh that. An object *lacking* the tag is not vetoed (that is the case
+  where the identifier gets written).
+- **Dedup prefers what there is to write, then the identifier**:
+  `DISTINCT ON (osm_id, node_type, atp_brand_wikidata)` orders a row with
+  something to add (`is_importable`) first, then an identifier-equal row,
+  then the nearest. Without the first key, a registry row that has already
+  written its tags would shadow, run after run, another source's row of the
+  same brand that still has some to add. Two rows are never merged: the
+  second one's turn comes on a later run, once the first has nothing left to
+  add.
+- **No ambiguity drop**: the `pt_cnt`/`poly_cnt` filter (a POI with several
+  candidates is too ambiguous to propose) never drops an identifier-equal
+  row — the identifier is what resolves the ambiguity.
+
 **b. `is_importable`** counts a missing identifier — otherwise gov rows
 (no hours, no website, no phone for most stations) propose nothing and the
 feature is silent:
@@ -172,17 +193,17 @@ OR EXISTS (
 )
 OR EXISTS (
     SELECT 1 FROM jsonb_each_text(atp.writable_tags) w(tag, value)
-    WHERE NOT osm.tags ? w.tag
+    WHERE osm.tags ->> w.tag IS DISTINCT FROM w.value
 )
 ```
 
 The second arm is what lets a station that already carries its `ref:mise`
-still receive its `fuel:*` (§6). It only fills: `writable_tags` is in no
-join arm.
+still receive its `fuel:*` (§6) — absent, or present with another value:
+the source's value replaces the object's. `writable_tags` is in no join arm.
 
 **c. `apply_on_node` wave 1** writes each identifier the object lacks,
 through the existing `apply_tag` (no-overwrite, `not:`-respect) — plus the
-writables (§6). Wave 2 never replaces an identifier: a station whose OSM
+writables, which replace (§6). Wave 2 never replaces an identifier: a station whose OSM
 object carries a *different* `ref:mise` is a review-worthy anomaly, not a
 correction. No entry in `modifiable_tags`.
 
@@ -197,9 +218,10 @@ writables never join). To keep one list per place:
   the pipeline hands the list over in `ATP2OSM_IDENTIFIER_TAGS`, comma-separated,
   like `ATP2OSM_ADMIN_LEVEL_MAX`. `mv_places_sql` composes the same list.
 - A stable tag (§6) never widens either list and never joins; but a
-  matched object lacking one is importable (`is_importable` counts a
-  missing `writable_tags` entry beside a missing identifier), so a station
-  that has its `ref:mise` still receives its `fuel:*`.
+  matched object whose value differs from the source's is importable
+  (`is_importable` counts an absent or different `writable_tags` entry
+  beside a missing identifier), so a station that has its `ref:mise` still
+  receives its `fuel:*`.
 - A country with no config writes the same SQL/Lua as today (the lists
   are empty), so France is byte-identical.
 
@@ -211,15 +233,17 @@ what the join finds diverge.
 ## 5. Multiple identifiers, both sides — the semantics
 
 - **Join**: any pair equal. A POI with both MISE code and VAT joins an
-  OSM object carrying either — and if the OSM object carries one of them
-  with a *different* value, no identifier pair matches, the POI falls
-  back on the attribute arms as before. Divergent identifiers never
-  produce a write (§4c writes only what is *absent*).
-- **Dedup unchanged**: `DISTINCT ON (osm_id, node_type, atp_brand_wikidata)`
-  keeps the nearest candidate. An identifier match and a brand match to
-  the same object collapse into one; to different objects, both stand and
-  the human reviews. Exactness raises the match rate, not the ambiguity
-  resolution — the reviewer is the ambiguity resolution.
+  OSM object carrying either. If no pair is equal and the OSM object
+  carries one of the POI's identifier tags with a *different* value, the
+  object is another place: the attribute arms do not join either (§4a,
+  veto). An object lacking the identifier tags still falls back on the
+  attribute arms, and gets the identifier written (§4c).
+- **Dedup**: `DISTINCT ON (osm_id, node_type, atp_brand_wikidata)` keeps
+  the candidate with something to add first, then the identifier-equal
+  one, then the nearest. An identifier match and a brand match to the same
+  object collapse into one row (§4a); to different objects, both stand and
+  the human reviews. The
+  reviewer remains the resolution of what the identifiers cannot settle.
 - **Pompe Bianche** (3 666 unbranded stations): no QID from the spider,
   so they stay off the brand list (§7) but still join by identifier
   wherever OSM has the tag, riding the ref arm into `nsi_tags`-less,
@@ -230,12 +254,22 @@ what the join finds diverge.
 
 ## 6. Stable writables — wave 1 only
 
-`atp_writable_tags` opens the wave-1 write to the matched source tags,
-with the same rules every wave-1 write already follows:
+`atp_writable_tags` opens the wave-1 write to the matched source tags:
 
-- **Only what the object lacks** (`apply_tag`), never an overwrite, never
-  `not:key`-insulting: `fuel:diesel=yes` on an object that a contributor
-  surveyed as no-diesel stays untouched — their tag wins, ours sleeps.
+- **The source's value wins**: a writable tag is added where the object
+  lacks it and replaces the object's value where it differs — that is what
+  "the source vouches for it" means, and the reason the list is measured
+  (below). The one thing that stops a write is a `not:key` carrying the
+  same value (`not:fuel:diesel=yes` against a source saying `fuel:diesel=yes`):
+  a contributor's explicit negation of that very value is a dispute for a
+  reviewer, not an overwrite. Identifiers keep the fill-only rule (§4c).
+- **Never over a recent human edit**: not every ATP source is a registry,
+  and a mapper's survey last week outranks any of them. A writable that
+  replaces a value goes through `protect_recent_edits` (spec 04) like a
+  wave-2 replacement does — per tag, a recent non-bot value is kept, an old
+  or bot-posted one is replaced. The guard is keyed on what the diff
+  overwrites, not on the wave, so it needs no new code path. A writable that
+  only adds a tag overwrites nothing and costs no request.
 - Values pass through as strings (the recipes unwrap JSON quoting).
 - `self_service` and friends are *deliberately possible* here — a country
   that trusts a source's `self_service` can configure it and own that
@@ -278,11 +312,13 @@ After the first refresh of an Italian instance:
 | `writable_tags <> '{}'` rows (fuel spider) | thousands |
 | identifier-joined matches | thousands, bounded by OSM's `ref:mise` coverage |
 | diff proposals adding `ref:mise` | > 0 on the first waves |
-| diff proposals adding `fuel:*` | > 0, and zero overwriting an existing `fuel:*` |
+| diff proposals writing `fuel:*` | > 0; a proposal whose `fuel:*` differs from the object's carries the source's value, and none touches a `fuel:*` already equal to it |
+| OSM objects carrying the identifier of an ATP POI within the radius | each kept with that POI, or with another row of the same brand when that POI has nothing left to add (§4a, dedup); none dropped, none paired with a POI the identifier contradicts |
+| matches with no equal identifier pair and a conflicting one | 0 |
 | France config: brand-list totals | identical before/after deploy |
 
-The last-but-one is the acceptance for §6 (a write that overwrites is a
-bug); the last is the no-config no-change guarantee.
+The last-but-one is the acceptance for §6 (the source's value replaces, and
+a tag already equal is never proposed again); the last is the no-config no-change guarantee.
 
 ---
 

@@ -75,6 +75,10 @@ La règle, tag par tag :
 
 Le seuil de fraîcheur est un nombre de semaines, à fixer par configuration.
 
+La protection porte sur tout tag que le diff *remplace*, quelle que soit la
+vague : les tags stables d'une source (`atp_writable_tags`, spec 07 §6)
+remplacent une valeur dès la vague 1 et y sont soumis.
+
 La protection est **par tag**, pas par objet. Un POI dont le `name` a été
 corrigé hier reste éligible à recevoir un `website` d'ATP.
 
