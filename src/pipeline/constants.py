@@ -52,6 +52,12 @@ NSI_CDN_URL = "https://cdn.jsdelivr.net/npm/name-suggestion-index@{version}/dist
 ADMIN_LEVEL = get_country().admin_level
 ADMIN_LEVEL_MAX = get_country().admin_level_max
 
+# The OSM tags an identifier is read from, every spider's: an object carrying
+# one is matchable by it, so neither the import nor mv_places may drop it.
+IDENTIFIER_OSM_TAGS = tuple(
+    sorted({tag for pairs in get_country().identifier_tags.values() for tag in pairs.values()})
+)
+
 
 class Region(TypedDict):
     """One Geofabrik extract: where it is published, where it is kept."""

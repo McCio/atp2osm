@@ -124,6 +124,13 @@ MATCHED_POI_SQL: Final = """
                 SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
                 WHERE NOT osm.tags ? i.tag
             )
+            -- And a stable tag the source vouches for (atp_writable_tags,
+            -- narrowed per spider by the loader): wave 1 writes it on a
+            -- matched object. Never a join arm above — it only fills.
+            OR EXISTS (
+                SELECT 1 FROM jsonb_each_text(atp.writable_tags) AS w(tag, value)
+                WHERE NOT osm.tags ? w.tag
+            )
         ) AS is_importable,
         -- Wave 2: the tags whose value ATP would replace, key -> ATP value.
         -- Computed here rather than in Python so that a single expression
@@ -560,6 +567,17 @@ def apply_on_node(atp_osm_match: Mapping[str, Any], wave: int = 1) -> Change | N
     # NSI from reclassifying or renaming anything.
     nsi_tags: Tags = atp_osm_match.get("nsi_tags") or {}
     for key, value in nsi_tags.items():
+        apply_tag(new_tags, key, value)
+
+    # The identifiers the source assigns and the stable tags it vouches for
+    # (the loader narrowed both per spider): written where absent, like the
+    # rest. An object carrying a different value for an identifier keeps it —
+    # a divergence for a reviewer, never a correction.
+    atp_tags: Tags = {
+        **(atp_osm_match.get("writable_tags") or {}),
+        **(atp_osm_match.get("identifiers") or {}),
+    }
+    for key, value in atp_tags.items():
         apply_tag(new_tags, key, value)
 
     return _change(atp_osm_match, new_tags)

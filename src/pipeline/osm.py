@@ -27,6 +27,7 @@ from src.pipeline.constants import (
     ADMIN_LEVEL_MAX,
     GEOFABRIK_REGIONS,
     GEOFABRIK_TS_PATH,
+    IDENTIFIER_OSM_TAGS,
     PROJECT_ROOT,
     Region,
 )
@@ -295,6 +296,7 @@ def _import_pbfs() -> None:
     env["PGPASSWORD"] = db.password
     # generic.lua reads them: the Lua style has no access to the configuration.
     env["ATP2OSM_ADMIN_LEVEL_MAX"] = str(ADMIN_LEVEL_MAX)
+    env["ATP2OSM_IDENTIFIER_TAGS"] = ",".join(IDENTIFIER_OSM_TAGS)
     env["ATP2OSM_IMPORT_SCHEMA"] = IMPORT_SCHEMA
     # A fixed command line, no shell; osm2pgsql is on the image's PATH.
     subprocess.run(  # noqa: S603
@@ -356,23 +358,40 @@ def run_osm2pgsql() -> None:
     build_subdivision_parts()
 
 
-def mv_places_sql(name: LiteralString = "mv_places") -> LiteralString:
+def mv_places_sql(name: LiteralString = "mv_places") -> sql.Composed:
     # Only rows that can ever match are kept: the join in
     # MATCHED_POI_SQL requires an equality on one of brand:wikidata,
-    # brand, name, email, website or phone, and NULL never equals
-    # anything. That drops 95% of the OSM objects (20.3M -> 1.1M) and
-    # cuts the /validate query time by a third to two thirds, with a
-    # provably identical result.
-    matchable = """
-        WHERE tags ?| ARRAY['name', 'brand', 'brand:wikidata',
-                            'email', 'contact:email',
-                            'phone', 'contact:phone',
-                            'website', 'contact:website']
+    # brand, name, email, website, phone or an identifier the country
+    # configures, and NULL never equals anything. That drops 95% of the OSM
+    # objects (20.3M -> 1.1M) and cuts the /validate query time by a third
+    # to two thirds, with a provably identical result. The same keys as
+    # generic.lua's matchable_keys.
+    matchable = sql.SQL(
+        """
+        WHERE tags ?| ARRAY[{keys}]
     """
+    ).format(
+        keys=sql.SQL(", ").join(
+            sql.Literal(key)
+            for key in (
+                "name",
+                "brand",
+                "brand:wikidata",
+                "email",
+                "contact:email",
+                "phone",
+                "contact:phone",
+                "website",
+                "contact:website",
+                *IDENTIFIER_OSM_TAGS,
+            )
+        )
+    )
     # The matchable filter sits in a subquery so that the NSI
     # lookup only ever runs on the 1.1M rows that survive it,
     # never on the 20.3M raw ones.
-    return f"""
+    return sql.SQL(
+        """
         CREATE MATERIALIZED VIEW {name} AS
         SELECT
             node_id                                              AS osm_id,
@@ -425,7 +444,8 @@ def mv_places_sql(name: LiteralString = "mv_places") -> LiteralString:
             geom
         FROM (SELECT * FROM polygons {matchable}) polygons
         LEFT JOIN LATERAL nsi_match(polygons.tags) AS nsi(tags) ON TRUE
-    """  # noqa: S608 — composed from code constants
+    """
+    ).format(name=sql.Identifier(name), matchable=matchable)
 
 
 # Canonical name to definition. Built under `<name>_new` on the new view and

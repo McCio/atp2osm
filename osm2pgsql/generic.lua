@@ -161,6 +161,13 @@ local matchable_keys = {
     'website', 'contact:website',
 }
 
+-- ...or an identifier the country configures (the pipeline passes the OSM tags
+-- of `identifier_tags`, comma-separated: the Lua style cannot read the
+-- configuration). Empty for a country with none, so its import is unchanged.
+for key in string.gmatch(os.getenv("ATP2OSM_IDENTIFIER_TAGS") or "", "[^,]+") do
+    table.insert(matchable_keys, key)
+end
+
 local function has_no_matchable_tag(tags)
     for _, key in ipairs(matchable_keys) do
         if tags[key] then return false end

@@ -170,7 +170,15 @@ OR EXISTS (
     SELECT 1 FROM jsonb_each_text(atp.identifiers) i(tag, value)
     WHERE NOT osm.tags ? i.tag
 )
+OR EXISTS (
+    SELECT 1 FROM jsonb_each_text(atp.writable_tags) w(tag, value)
+    WHERE NOT osm.tags ? w.tag
+)
 ```
+
+The second arm is what lets a station that already carries its `ref:mise`
+still receive its `fuel:*` (§6). It only fills: `writable_tags` is in no
+join arm.
 
 **c. `apply_on_node` wave 1** writes each identifier the object lacks,
 through the existing `apply_tag` (no-overwrite, `not:`-respect) — plus the
@@ -184,8 +192,14 @@ sources) plus the writable patterns' concrete keys is *not* needed (the
 writables never join). To keep one list per place:
 
 - `generic.lua` `matchable_keys` and `mv_places`'s `tags ?|` list: add the
-  OSM tags named by `identifier_tags` (the config, again — the Lua file
-  reads it through the same env var osm2pgsql already receives).
+  OSM tags named by `identifier_tags`, every spider's (`IDENTIFIER_OSM_TAGS`,
+  `src/pipeline/constants.py`). The Lua style cannot read the configuration:
+  the pipeline hands the list over in `ATP2OSM_IDENTIFIER_TAGS`, comma-separated,
+  like `ATP2OSM_ADMIN_LEVEL_MAX`. `mv_places_sql` composes the same list.
+- A stable tag (§6) never widens either list and never joins; but a
+  matched object lacking one is importable (`is_importable` counts a
+  missing `writable_tags` entry beside a missing identifier), so a station
+  that has its `ref:mise` still receives its `fuel:*`.
 - A country with no config writes the same SQL/Lua as today (the lists
   are empty), so France is byte-identical.
 

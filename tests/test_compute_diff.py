@@ -101,3 +101,42 @@ def test_apply_on_node_rewrites_08_in_national_notation() -> None:
 def test_apply_on_node_leaves_other_numbers_alone() -> None:
     res = one(match({}, atp_phone="+33 1 23 45 67 89"))
     assert res["tag"]["phone"] == "+33 1 23 45 67 89"
+
+
+def test_apply_on_node_writes_an_identifier_the_object_lacks() -> None:
+    res = one(match({"amenity": "fuel"}, identifiers={"ref:mise": "49195"}))
+    assert res["tag"] == {"amenity": "fuel", "ref:mise": "49195"}
+
+
+def test_apply_on_node_never_replaces_a_divergent_identifier() -> None:
+    assert match({"ref:mise": "11111"}, identifiers={"ref:mise": "49195"}) is None
+
+
+def test_apply_on_node_respects_not_key_on_an_identifier() -> None:
+    assert match({"not:ref:mise": "49195"}, identifiers={"ref:mise": "49195"}) is None
+
+
+def test_apply_on_node_writes_the_writable_tags_the_object_lacks() -> None:
+    res = one(match({"fuel:diesel": "no"}, writable_tags={"fuel:diesel": "yes", "fuel:lpg": "yes"}))
+    assert res["tag"] == {"fuel:diesel": "no", "fuel:lpg": "yes"}
+
+
+def test_apply_on_node_wave_2_writes_neither_identifiers_nor_writable_tags() -> None:
+    row = {
+        "osm_id": 1,
+        "version": 1,
+        "node_type": "node",
+        "tags": {},
+        "lon": 1,
+        "lat": 2,
+        "brand": "Babylone",
+        "id": "atp-1",
+        "source_uri": None,
+        "source_type": "spider",
+        "postcode": None,
+        "subdivision_code": "75",
+        "subdivision_name": "Paris",
+        "identifiers": {"ref:mise": "49195"},
+        "writable_tags": {"fuel:lpg": "yes"},
+    }
+    assert apply_on_node(row, wave=2) is None

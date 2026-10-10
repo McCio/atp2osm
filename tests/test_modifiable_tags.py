@@ -33,7 +33,8 @@ SCHEMA = """
         phone TEXT, website TEXT, opening_hours TEXT, country TEXT,
         city TEXT, source_uri TEXT, source_type TEXT, spider_id TEXT,
         postcode TEXT, subdivision_code TEXT, subdivision_name TEXT,
-        category TEXT[], geom TEXT, identifiers JSONB DEFAULT '{}'::jsonb
+        category TEXT[], geom TEXT, identifiers JSONB DEFAULT '{}'::jsonb,
+        writable_tags JSONB DEFAULT '{}'::jsonb
     );
 """
 

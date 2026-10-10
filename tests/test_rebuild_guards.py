@@ -344,6 +344,18 @@ def osm2pgsql(
     return calls
 
 
+def test_the_identifier_tags_reach_the_import_and_the_view(
+    pipeline: Connection, osm2pgsql: list[Osm2pgsqlCall], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(osm, "IDENTIFIER_OSM_TAGS", ("ref:mise", "ref:vat"))
+
+    osm.run_osm2pgsql()
+
+    (call,) = osm2pgsql
+    assert call["env"]["ATP2OSM_IDENTIFIER_TAGS"] == "ref:mise,ref:vat"
+    assert "'contact:website', 'ref:mise', 'ref:vat'" in osm.mv_places_sql().as_string()
+
+
 def test_the_import_swaps_the_new_tables_in_and_retires_the_old(
     pipeline: Connection, osm2pgsql: list[Osm2pgsqlCall]
 ) -> None:
@@ -354,6 +366,8 @@ def test_the_import_swaps_the_new_tables_in_and_retires_the_old(
     (call,) = osm2pgsql
     assert call["env"]["ATP2OSM_IMPORT_SCHEMA"] == osm.IMPORT_SCHEMA
     assert call["env"]["ATP2OSM_ADMIN_LEVEL_MAX"] == str(osm.ADMIN_LEVEL_MAX)
+    # No identifier configured: generic.lua and mv_places keep today's keys.
+    assert call["env"]["ATP2OSM_IDENTIFIER_TAGS"] == ""
     assert "PGPASSWORD" in call["env"]
     assert "-x" in call["args"]
     assert "flex" in call["args"]

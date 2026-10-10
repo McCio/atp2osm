@@ -29,7 +29,10 @@ def places(_migrated: Database) -> Iterator[Connection]:
 
 
 def match(
-    conn: Connection, osm_tags: dict[str, str], identifiers: dict[str, str]
+    conn: Connection,
+    osm_tags: dict[str, str],
+    identifiers: dict[str, str],
+    writable_tags: dict[str, str] | None = None,
 ) -> dict[str, bool] | None:
     """The match flags of an object carrying *osm_tags* against an ATP POI
     carrying *identifiers*, or None when they do not join.
@@ -45,9 +48,9 @@ def match(
             (json.dumps(osm_tags),),
         )
         cur.execute(
-            """INSERT INTO atp_places (id, name, subdivision_code, identifiers, geom)
-               VALUES ('a1', 'Q8 Via Roma', '75', %s::jsonb, %s)""",
-            (json.dumps(identifiers), GEOJSON),
+            """INSERT INTO atp_places (id, name, subdivision_code, identifiers, writable_tags, geom)
+               VALUES ('a1', 'Q8 Via Roma', '75', %s::jsonb, %s::jsonb, %s)""",
+            (json.dumps(identifiers), json.dumps(writable_tags or {}), GEOJSON),
         )
         row = cur.execute(matched_poi_sql()).fetchone()
         return None if row is None else {"is_importable": row["is_importable"]}
@@ -83,3 +86,23 @@ def test_an_identifier_the_object_lacks_is_importable(places: Connection) -> Non
 def test_an_object_that_has_them_all_is_not_importable(places: Connection) -> None:
     flags = match(places, {"ref:mise": "49195"}, {"ref:mise": "49195"})
     assert flags == {"is_importable": False}
+
+
+def test_a_matched_object_lacking_a_writable_tag_is_importable(places: Connection) -> None:
+    """The station has its ref:mise; it still receives the fuel it lacks."""
+    flags = match(places, {"ref:mise": "49195"}, {"ref:mise": "49195"}, {"fuel:diesel": "yes"})
+    assert flags == {"is_importable": True}
+
+
+def test_a_writable_tag_the_object_has_is_not_importable(places: Connection) -> None:
+    flags = match(
+        places,
+        {"ref:mise": "49195", "fuel:diesel": "no"},
+        {"ref:mise": "49195"},
+        {"fuel:diesel": "yes"},
+    )
+    assert flags == {"is_importable": False}
+
+
+def test_a_writable_tag_never_joins(places: Connection) -> None:
+    assert match(places, {"fuel:diesel": "yes"}, {}, {"fuel:diesel": "yes"}) is None
