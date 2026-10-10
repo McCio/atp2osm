@@ -103,33 +103,42 @@ off, behaviour identical to today.
 
 `import_atp` (`src/pipeline/atp.py`) builds `atp_places` from the parquet
 with a fixed SELECT. It gains two columns, both `jsonb`, both built by
-DuckDB from the configuration (recipes verified against the local parquet):
+DuckDB from the configuration — `identifiers_sql` and `writable_tags_sql`
+compose the expressions, `tests/test_atp_loader_recipes.py` runs them:
 
 ```sql
 -- identifiers: {osm_tag: value} for the merged ("*" + spider) properties
 MAP_FROM_ENTRIES(LIST_FILTER([
-    {'k': 'ref:vat',  'v': properties->>'$.ref:vat'},
-    {'k': 'ref:mise', 'v': properties->>'$.ref'}
-], t -> t.v IS NOT NULL))::JSONB     AS identifiers
+    {'k': 'ref:vat',  'v': properties->>'$."ref:vat"'},
+    {'k': 'ref:mise', 'v': properties->>'$."ref"'}
+], t -> t.v IS NOT NULL AND t.v <> ''))::JSON     AS identifiers
 
 -- stable writables: {tag: value} for every property matching a pattern
--- (json_each value is JSON-quoted; unwrap with json_extract_string)
-FROM json_each(properties) je(k, v) WHERE starts_with(k, 'fuel:')
-    -> MAP(LIST(k), LIST(json_extract_string(v, '$')))::JSONB AS writable_tags
+MAP_FROM_ENTRIES(LIST_TRANSFORM(
+    LIST_FILTER(JSON_KEYS(properties), k -> starts_with(k, 'fuel:')),
+    k -> {'k': k, 'v': JSON_EXTRACT_STRING(properties, '$."' || k || '"')}
+))::JSON                                          AS writable_tags
 ```
 
+- DuckDB has no `JSONB` type: the columns are `json` when it creates the
+  table, and `import_atp` converts them with `ALTER COLUMN ... TYPE JSONB`
+  before the indexes are built. A blank value is no identifier (it would
+  equal an OSM tag left empty).
 - The pairs come from the config in Python — `"*"` overlaid by the
   spider's own entry, on the ATP property key (`{"ref:vat": "ref:vat"}`
   merged with `{"ref": "ref:mise"}` for the fuel spider: two pairs,
   `ref:vat` universal plus `ref`→MISE); the SQL is composed with them
-  (constants, `sql.Literal`-safe, like the territory codes already are).
+  (`sql.Literal`-quoted), one `CASE` arm per spider the configuration lists.
+  The same for the writable patterns: the spider's own plus `"*"`'s.
 - Rows of spiders absent from the config still pick up the `"*"` pairs; a
   property key no entry names is simply not read.
 - `ATP_PLACES_INDEXES` gains a GIN index on `identifiers`.
 - **Bridging migration required** (AGENTS.md, "Pipeline tables and the
-  site"): `ALTER TABLE IF EXISTS atp_places ADD COLUMN IF NOT EXISTS
-  identifiers JSONB DEFAULT '{{}}'::jsonb;` and the same for
-  `writable_tags`. The matching SQL tolerates the default from day one.
+  site"), `033_atp_places_identifiers.sql`: `ALTER TABLE IF EXISTS atp_places
+  ADD COLUMN IF NOT EXISTS identifiers JSONB DEFAULT '{}'::jsonb;` and the
+  same for `writable_tags`. `IF EXISTS` because a fresh instance migrates
+  before its first refresh has built the table. The matching SQL tolerates
+  the default from day one.
 
 ---
 

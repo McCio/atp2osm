@@ -14,6 +14,7 @@ says so", or "something moved, the step rebuilds and the live object is
 never missing in between".
 """
 
+import dataclasses
 import json
 import subprocess
 from collections.abc import Callable, Iterator
@@ -26,7 +27,7 @@ import pytest
 import requests
 from psycopg import sql
 
-from src.config import Database
+from src.config import Database, get_country
 from src.phone import ensure_normalize_phone
 from src.pipeline import _matview, _version, atp, atp2osm, nsi, osm
 from src.pipeline._db import record_import, start_import
@@ -782,7 +783,15 @@ def parquet(atp_workdir: Path) -> Path:
     split = atp_workdir / "split"
     split.mkdir()
     features = [
-        feature("paris", "babylone_fr", "FR", 2.35, 48.85, phone="+33 1 00 00 00 00"),
+        feature(
+            "paris",
+            "babylone_fr",
+            "FR",
+            2.35,
+            48.85,
+            phone="+33 1 00 00 00 00",
+            **{"ref": "49195", "fuel:diesel": "yes", "charge:diesel": "1.8"},
+        ),
         feature("fort-de-france", "babylone_mq", "MQ", -61.07, 14.6),
         feature("berlin", "babylone_de", "DE", 13.4, 52.5),
         feature("atlantic", "babylone_fr", "FR", -30.0, 45.0),
@@ -860,6 +869,31 @@ def test_the_import_keeps_the_country_and_attaches_every_poi(
     (recorded,) = imports(pipeline, "atp")
     assert recorded[1:] == ("success", _version.app_version())
     assert recorded[0] == datetime.fromtimestamp(parquet.stat().st_mtime, tz=UTC)
+
+
+def test_the_import_loads_identifiers_and_writables_as_jsonb(
+    pipeline: Connection, parquet: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configured = dataclasses.replace(
+        get_country(),
+        identifier_tags={"babylone_fr": {"ref": "ref:mise"}},
+        atp_writable_tags={"*": ("fuel:*",)},
+    )
+    monkeypatch.setattr(atp, "get_country", lambda: configured)
+    start_import(pipeline, "atp")
+
+    atp.import_atp()
+
+    pipeline.rollback()
+    rows = pipeline.execute(
+        """SELECT id, identifiers, writable_tags, pg_typeof(identifiers)::text,
+                  pg_typeof(writable_tags)::text
+             FROM atp_places ORDER BY id"""
+    ).fetchall()
+    assert rows == [
+        ("fort-de-france", {}, {}, "jsonb", "jsonb"),
+        ("paris", {"ref:mise": "49195"}, {"fuel:diesel": "yes"}, "jsonb", "jsonb"),
+    ]
 
 
 def test_the_same_parquet_by_the_same_revision_is_not_imported_twice(

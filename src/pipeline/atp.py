@@ -12,7 +12,7 @@ import psycopg
 import requests
 from psycopg import sql
 
-from src.config import get_country, get_database
+from src.config import Country, get_country, get_database
 from src.pipeline import _matview
 from src.pipeline._db import (
     Connection,
@@ -619,7 +619,81 @@ ATP_PLACES_INDEXES: dict[str, LiteralString] = {
     "atp_places_subdivision_code_idx": "(subdivision_code)",
     "atp_places_spider_idx": "(spider_id)",
     "atp_places_source_type_idx": "(source_type)",
+    "atp_places_identifiers_idx": "USING GIN (identifiers)",
 }
+
+
+def _literal(value: str) -> str:
+    return sql.Literal(value).as_string()
+
+
+def _spider_case(spider_recipes: dict[str, str], default: str) -> str:
+    """One SQL expression per spider of the configuration, `default` for the rest."""
+    if not spider_recipes:
+        return default
+    whens = " ".join(f"WHEN {_literal(s)} THEN {r}" for s, r in spider_recipes.items())
+    return f"CASE properties->>'$.@spider' {whens} ELSE {default} END"
+
+
+def identifiers_sql(country: Country) -> str:
+    """DuckDB expression of `identifiers`: {OSM tag: value} for the identifiers
+    a POI carries, per the configuration — `"*"` overlaid by the spider's own
+    entry, the spider winning on a property key.
+    """
+
+    def recipe(pairs: dict[str, str]) -> str:
+        if not pairs:
+            return "'{}'::JSON"
+
+        # The key is quoted in the path: it may hold a dot.
+        def entry(key: str, tag: str) -> str:
+            path = _literal(f'$."{key}"')
+            return f"{{'k': {_literal(tag)}, 'v': properties->>{path}}}"
+
+        entries = ", ".join(entry(key, tag) for key, tag in pairs.items())
+        # An empty value would equal an OSM tag left empty.
+        return (
+            f"MAP_FROM_ENTRIES(LIST_FILTER([{entries}], t -> t.v IS NOT NULL AND t.v <> ''))::JSON"
+        )
+
+    universal = dict(country.identifier_tags.get("*", {}))
+    return _spider_case(
+        {
+            spider: recipe({**universal, **pairs})
+            for spider, pairs in country.identifier_tags.items()
+            if spider != "*"
+        },
+        recipe(universal),
+    )
+
+
+def writable_tags_sql(country: Country) -> str:
+    """DuckDB expression of `writable_tags`: {tag: value} for every property the
+    configuration lets the spider write — its own patterns plus `"*"`'s. A
+    pattern is an exact key, or a prefix with a trailing `*`.
+    """
+
+    def test(patterns: tuple[str, ...]) -> str:
+        return (
+            " OR ".join(
+                f"starts_with(k, {_literal(p[:-1])})" if p.endswith("*") else f"k = {_literal(p)}"
+                for p in patterns
+            )
+            or "false"
+        )
+
+    universal = country.atp_writable_tags.get("*", ())
+    own = {s: p for s, p in country.atp_writable_tags.items() if s != "*"}
+    if not universal and not any(own.values()):
+        return "'{}'::JSON"
+    keep = _spider_case(
+        {s: f"({test(universal + p)})" for s, p in own.items()}, f"({test(universal)})"
+    )
+    # json_each would be a lateral join per row; the keys are a list.
+    return (
+        f"MAP_FROM_ENTRIES(LIST_TRANSFORM(LIST_FILTER(JSON_KEYS(properties), k -> {keep}), "
+        "k -> {'k': k, 'v': JSON_EXTRACT_STRING(properties, '$.\"' || k || '\"')}))::JSON"
+    )
 
 
 def import_atp() -> None:
@@ -671,7 +745,8 @@ def import_atp() -> None:
             logger.info("Creating atp_places table from parquet...")
             # A POI of ours carries the country code or one of its territories':
             # ISO codes Martinique MQ, and ATP follows its sources.
-            countries = ", ".join(f"'{c.upper()}'" for c in get_country().territory_codes)
+            country = get_country()
+            countries = ", ".join(f"'{c.upper()}'" for c in country.territory_codes)
             # DuckDB, fed a path and the country codes of the configuration.
             ddb.execute(f"""
                 CREATE TABLE pg.atp_places_new AS
@@ -706,11 +781,22 @@ def import_atp() -> None:
                         ['craft',      properties->>'$.craft'],
                         ['landuse',    properties->>'$.landuse']
                     ], t -> t[2] IS NOT NULL)[1]      AS category,
+                    {identifiers_sql(country)}        AS identifiers,
+                    {writable_tags_sql(country)}      AS writable_tags,
                     ST_AsGeoJSON(geom)                AS geom
                 FROM read_parquet('{PARQUET_PATH}')
                 WHERE properties->>'$.addr:country' IN ({countries})
                     AND geom IS NOT NULL
             """)  # noqa: S608
+
+            # DuckDB writes its JSON as `json`; the matcher reads jsonb, and
+            # the GIN index needs it.
+            with conn.cursor() as cur:
+                cur.execute(
+                    "ALTER TABLE atp_places_new ALTER COLUMN identifiers TYPE JSONB, "
+                    "ALTER COLUMN writable_tags TYPE JSONB"
+                )
+            conn.commit()
 
             attach_subdivisions(conn, "atp_places_new")
 
