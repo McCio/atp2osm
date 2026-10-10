@@ -14,6 +14,7 @@ import json
 import os
 import pathlib
 import zoneinfo
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
@@ -80,6 +81,14 @@ class Country:
     trunk_prefix: str
     nsi_locations: frozenset[str]
     nsi_writable_tags: frozenset[str]
+    # Spider → {ATP property key → OSM tag}, "*" universal. Frozen maps for the
+    # same reason as the frozensets: a country is immutable.
+    identifier_tags: Mapping[str, Mapping[str, str]] = field(
+        default_factory=dict[str, Mapping[str, str]]
+    )
+    atp_writable_tags: Mapping[str, tuple[str, ...]] = field(
+        default_factory=dict[str, tuple[str, ...]]
+    )
     nsi_calibration: dict[str, Any] = field(default_factory=dict[str, Any], compare=False)
 
     @property
@@ -188,6 +197,18 @@ def _parse_country(raw: dict[str, Any]) -> Country:
 
     writable = tuple(raw.get("nsi_writable_tags", _default("country", "nsi_writable_tags")))
     calibration = raw.get("nsi_calibration", {})
+    identifiers = {
+        spider: dict(pairs)
+        for spider, pairs in raw.get(
+            "identifier_tags", _default("country", "identifier_tags")
+        ).items()
+    }
+    writables = {
+        spider: tuple(patterns)
+        for spider, patterns in raw.get(
+            "atp_writable_tags", _default("country", "atp_writable_tags")
+        ).items()
+    }
     return Country(
         territory_codes=tuple(raw["territory_codes"]),
         locales=locales,
@@ -200,6 +221,8 @@ def _parse_country(raw: dict[str, Any]) -> Country:
         trunk_prefix=raw.get("trunk_prefix", _default("country", "trunk_prefix")),
         nsi_locations=frozenset(raw["nsi_locations"]),
         nsi_writable_tags=frozenset(writable),
+        identifier_tags=identifiers,
+        atp_writable_tags=writables,
         nsi_calibration=calibration,
     )
 

@@ -205,6 +205,50 @@
             }
           },
           "default": {}
+        },
+        "identifier_tags": {
+          "description": "Registry identifiers a match may join on and wave 1 may write: ATP spider name → {ATP property key → OSM tag}. The entry named \"*\" applies to every spider and the spider's own entry overlays it (a spider mapping the same ATP property key wins). Split the mapping along where the meaning lives: a property key that names its own OSM tag (ref:vat → ref:vat, wherever it appears) is universal and goes under \"*\"; one whose meaning depends on the exporter (plain ref: the MISE station code for the Italian fuel spider, a store number elsewhere) is per spider, and a spider absent here exports that property to no OSM tag. A POI joins on any pair whose OSM tag equals the ATP value; the join never fires on an absent pair. Left out or empty: no identifier matching.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "default": {},
+          "examples": [
+            {
+              "*": {
+                "ref:vat": "ref:vat"
+              },
+              "gov_osservaprezzi_carburanti_it": {
+                "ref": "ref:mise"
+              }
+            }
+          ]
+        },
+        "atp_writable_tags": {
+          "description": "Stable tags a matched ATP POI may add to an OSM object that lacks them, wave 1 only, never overwriting and never a match key. Mapped per ATP spider, like identifier_tags: whether a source's exports are trustworthy enough to write is a property of the source — a government registry's fuel tags are authoritative, a crowd-sourced spider's are not. The entry named \"*\" applies to every spider and adds to each spider's own list. Property-key patterns: a key, or a prefix with a trailing * (fuel:* covers every fuel a source exports). Offers-of-fuel tags are the model — a stable fact of the place; prices (charge:*) churn daily and stay out. Joining on these would be wrong even where they look identifying (self_service=yes names every nearby station alike), which is why identifier_tags is a separate key.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^*]+\\*?$"
+            }
+          },
+          "default": {},
+          "examples": [
+            {
+              "gov_osservaprezzi_carburanti_it": [
+                "fuel:*"
+              ]
+            }
+          ]
         }
       }
     },
@@ -416,7 +460,20 @@
           "takeaway",
           "operator:type"
         ],
-        "nsi_calibration": {}
+        "nsi_calibration": {},
+        "identifier_tags": {
+          "*": {
+            "ref:vat": "ref:vat"
+          },
+          "gov_osservaprezzi_carburanti_it": {
+            "ref": "ref:mise"
+          }
+        },
+        "atp_writable_tags": {
+          "gov_osservaprezzi_carburanti_it": [
+            "fuel:*"
+          ]
+        }
       },
       "app": {
         "env": "PRODUCTION",

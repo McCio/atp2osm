@@ -190,3 +190,56 @@ def test_the_first_code_is_the_country_and_the_rest_its_territories() -> None:
 
 def test_a_country_without_territories_reads_one_code() -> None:
     assert load(country={"territory_codes": ["de"]}).country.code == "de"
+
+
+def test_the_default_is_no_identifier_matching_and_no_extra_writables() -> None:
+    """The keys are opt-in: a country that configures neither keeps today's
+    matching and the founding-four writes.
+    """
+    settings = load()
+
+    assert settings.country.identifier_tags == {}
+    assert settings.country.atp_writable_tags == {}
+
+
+def test_identifier_tags_arrive_per_spider_with_a_universal_layer() -> None:
+    settings = load(
+        country={
+            "identifier_tags": {
+                "*": {"ref:vat": "ref:vat"},
+                "gov_osservaprezzi_carburanti_it": {"ref": "ref:mise"},
+            }
+        }
+    )
+
+    assert settings.country.identifier_tags["*"] == {"ref:vat": "ref:vat"}
+    assert settings.country.identifier_tags["gov_osservaprezzi_carburanti_it"] == {
+        "ref": "ref:mise"
+    }
+
+
+def test_atp_writable_tags_arrive_per_spider() -> None:
+    settings = load(country={"atp_writable_tags": {"gov_osservaprezzi_carburanti_it": ["fuel:*"]}})
+
+    assert settings.country.atp_writable_tags == {"gov_osservaprezzi_carburanti_it": ("fuel:*",)}
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        # a mapping of spider -> pairs is required, not a flat map or a list
+        ("identifier_tags", {"ref": "ref:mise"}),
+        ("identifier_tags", ["ref:mise"]),
+        # pairs are strings, non-empty, and at least one per spider
+        ("identifier_tags", {"spider": {"ref": ""}}),
+        ("identifier_tags", {"spider": {}}),
+        ("identifier_tags", {"spider": {"ref": 42}}),
+        # writable patterns are strings a * only terminates
+        ("atp_writable_tags", ["fuel:*"]),
+        ("atp_writable_tags", {"spider": []}),
+        ("atp_writable_tags", {"spider": ["fuel:*.yes"]}),
+    ],
+)
+def test_a_malformed_identifier_setting_is_refused(key: str, value: object) -> None:
+    with pytest.raises(config.ConfigError, match=key):
+        load(country={key: value})
