@@ -536,9 +536,25 @@ def test_the_batch_never_exceeds_the_wave_size(
             for i in range(wave.batch_size + 5)
         ],
     )
-    contributor.get("/brands/Q1/validate")
+    res = contributor.get("/brands/Q1/validate")
     _, context = next(c for c in rendered if c[0].endswith("validate.html"))
     assert context["size"] == wave.batch_size
+    # The page says what the brand list counts, the batch being a slice of it.
+    assert context["remaining"] == wave.batch_size + 5
+    assert f"{wave.batch_size + 5} POIs to integrate in all" in res.text
+
+
+def test_a_batch_that_is_the_whole_brand_does_not_announce_a_remainder(
+    contributor: FlaskClient,
+    brand: Connection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    give(brand, 1, [("75", 2)])
+    stage(
+        monkeypatch, [change(i, {"website": f"https://babylone.example/{i}"}, {}) for i in (1, 2)]
+    )
+    res = contributor.get("/brands/Q1/validate")
+    assert "to integrate in all" not in res.text
 
 
 def test_the_last_import_is_recalled(

@@ -200,6 +200,10 @@ class Batch(NamedTuple):
     # Matches are left, but every one is in a blocked subdivision: the brand
     # is not done, it is waiting for a cooldown or for the next OSM refresh.
     waiting: bool = False
+    # Every match of the brand on this wave outside a blocked subdivision and
+    # a type left out: what the brand list counts, less the types the reviewer
+    # dropped, of which the batch is the first slice.
+    remaining: int = 0
 
 
 def read_excluded(
@@ -245,7 +249,8 @@ def get_batch(brand_wikidata: str) -> Batch:
     unfiltered = select_batch(matches, blocked, wave.batch_size)
     categories = batch_categories(unfiltered)
     excluded, replayed = read_excluded(brand_wikidata, categories)
-    changes = select_batch(exclude_categories(matches, excluded), blocked, wave.batch_size)
+    kept = exclude_categories(matches, excluded)
+    changes = select_batch(kept, blocked, wave.batch_size)
     # A value a human posted recently is theirs, not ours. Costs no request on
     # a batch that only adds tags; wave 2 and the writable tags a source
     # replaces on wave 1 cost one batch's worth.
@@ -253,7 +258,10 @@ def get_batch(brand_wikidata: str) -> Batch:
     # so the replay is cheap. Memoize it if the batch size is raised.
     changes = protect_recent_edits(changes)
     waiting = bool(matches) and not unfiltered
-    return Batch(changes, batch_scope(changes), wave, categories, excluded, replayed, waiting)
+    remaining = sum(1 for match in kept if match["subdivision_code"] not in blocked)
+    return Batch(
+        changes, batch_scope(changes), wave, categories, excluded, replayed, waiting, remaining
+    )
 
 
 @brands_bp.errorhandler(OsmApiUnavailableError)
@@ -385,6 +393,7 @@ def brands_validate(brand_wikidata: str) -> str:
         brand_wikidata=brand_wikidata,
         brand=sample[0]["atp_brand"] if sample else _atp_brand_name(brand_wikidata),
         size=len(changes),
+        remaining=batch.remaining,
         scope=scope,
         categories=batch.categories,
         excluded=batch.excluded,

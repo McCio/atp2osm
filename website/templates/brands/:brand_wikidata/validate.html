@@ -5,7 +5,10 @@
 {% from '_poi_type.html' import poi_type, wiki_url %}
 {% import '_wave.html' as wave with context %}
 {% block title %}{% trans brand=brand %}1/2 - Reviewing the data of {{ brand }}{% endtrans %} (<a href="https://www.wikidata.org/wiki/{{ brand_wikidata }}" target="_blank" rel="noopener" class="link font-mono">{{ brand_wikidata }}<i class="iconoir-open-new-window" aria-hidden="true"></i></a>) <span class="join align-middle">{{ wave.badge(wave_number) }}</span>{% endblock %}
-{% block subtitle %}{% trans shown=items | length, size=size %}Review {{ shown }} of the {{ size }} points of interest of this batch, drawn at random. A value marked <span class="text-success"><i class="iconoir-plus align-middle"></i> in green</span> will be written, coming from ATP or from the Name Suggestion Index{% endtrans %}{% if wave_number == 2 %}{% trans %}; a value marked <span class="text-error"><i class="iconoir-minus align-middle"></i> in red</span> is the one it replaces in OpenStreetMap{% endtrans %}{% endif %}. {{ _('Every other tag is already in OpenStreetMap and will not be updated.') }}{% endblock %}
+{% block subtitle %}{% trans shown=items | length, size=size %}Review {{ shown }} of the {{ size }} points of interest of this batch, drawn at random.{% endtrans %}
+{# The batch is the first slice of what the brand list counts. #}
+{% if remaining > size %}{% trans total=remaining %}The brand has {{ total }} POIs to integrate in all: the others come in the next batches.{% endtrans %}{% endif %}<br>
+{% trans %}A value marked <span class="text-success"><i class="iconoir-plus align-middle"></i> in green</span> will be written, coming from ATP or from the Name Suggestion Index{% endtrans %}{% if wave_number == 2 %}{% trans %}; a value marked <span class="text-error"><i class="iconoir-minus align-middle"></i> in red</span> is the one it replaces in OpenStreetMap{% endtrans %}{% endif %}. {{ _('Every other tag is already in OpenStreetMap and will not be updated.') }}{% endblock %}
 
 {% block custom_js %}
 <script src="/static/js/validate.js?v={{ app_version }}" type="text/javascript"></script>
