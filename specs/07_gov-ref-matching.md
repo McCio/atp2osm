@@ -94,7 +94,14 @@ This key gates only tags **beyond the founding four** — `opening_hours`,
 spider needs vouching for them. `atp_writable_tags` is the gate for
 everything else a spider exports.
 
-Both live on `country`, validated by the schema. Absent/empty = mechanism
+**`atp_denied_tags`** — property-key patterns, for every spider, that the
+calibration (§6) never measures. The script already skips what the tool's own
+mechanisms own; this is what a country adds because it knows its data
+(`charge:*`, the Italian fuel spider's prices, is the model: whether a source
+exports prices is not something the tool can know). Only the calibration reads
+it.
+
+All three live on `country`, validated by the schema. Absent/empty = mechanism
 off, behaviour identical to today.
 
 ---
@@ -280,14 +287,25 @@ what the join finds diverge.
 Like `nsi_writable_tags`, the list is **measured, not guessed** — the
 calibration script is the twin of `scripts/calibrate_nsi_tags.py` and
 lands after the machinery it measures (§9): it matches the country's
-`atp_places` against OSM (the existing `MATCHED_POI_SQL`, no upload),
-joins `writable_tags` with `osm.tags` on matched pairs, and reports, per
-(spider, tag), the share of pairs where OSM already carries the tag with
-the same value — agreement, the same statistic the NSI script computes.
+`atp_places` against OSM (the existing `MATCHED_POI_SQL`, no upload), reads
+the matched POIs' properties from the ATP parquet, and reports, per
+(spider, tag), the share of objects carrying the tag that carry the
+source's value — agreement, the same statistic the NSI script computes.
 A registry's `fuel:*` is expected to measure high; a crowd-sourced
 spider's to land where it lands, which is the point of measuring. The
-script writes `atp_writable_tags` above a threshold, nobody copies a
-rate by hand, and a new ATP release is re-evaluated by rerunning it.
+script writes `atp_writable_tags` above a threshold (98% over at least 50
+objects), nobody copies a rate by hand, and a new ATP release is
+re-evaluated by rerunning it.
+
+The parquet, not `atp_places.writable_tags`, because the table holds only
+what `atp_writable_tags` already lists: measuring that would refine a list
+somebody had to seed. So the script needs no seed: it measures **every
+property the spider exports**, bar a denylist — what the tool's own
+mechanisms own (the founding four and `contact:*`, names and brand,
+`addr:*`, the type of place, `ref`, `@*` metadata), the identifier keys
+`identifier_tags` maps for that spider, and the country's own
+`atp_denied_tags` (§2). `--pattern` narrows the search, never past the
+denylist.
 
 ---
 

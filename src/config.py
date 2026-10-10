@@ -89,6 +89,8 @@ class Country:
     atp_writable_tags: Mapping[str, tuple[str, ...]] = field(
         default_factory=dict[str, tuple[str, ...]]
     )
+    # Property patterns scripts/calibrate_atp_tags.py never measures.
+    atp_denied_tags: tuple[str, ...] = ()
     nsi_calibration: dict[str, Any] = field(default_factory=dict[str, Any], compare=False)
 
     @property
@@ -223,6 +225,7 @@ def _parse_country(raw: dict[str, Any]) -> Country:
         nsi_writable_tags=frozenset(writable),
         identifier_tags=identifiers,
         atp_writable_tags=writables,
+        atp_denied_tags=tuple(raw.get("atp_denied_tags", _default("country", "atp_denied_tags"))),
         nsi_calibration=calibration,
     )
 

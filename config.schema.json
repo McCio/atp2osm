@@ -178,7 +178,7 @@
           ]
         },
         "nsi_calibration": {
-          "description": "The measurement that justifies nsi_writable_tags, written by scripts/calibrate_nsi_tags.py — never by hand. A tag listed as writable but absent from `agreement` is warned about at startup.",
+          "description": "The measurement that justifies nsi_writable_tags, written by scripts/calibrate_nsi_tags.py — never by hand. A tag listed as writable but absent from `agreement` has no measurement behind it.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -248,6 +248,21 @@
                 "fuel:*"
               ]
             }
+          ]
+        },
+        "atp_denied_tags": {
+          "description": "ATP property keys scripts/calibrate_atp_tags.py never measures, in the same patterns as atp_writable_tags (a key, or a prefix with a trailing *), for every spider. The script already skips what other mechanisms own (names, address, contact, identifiers, the type of place); this is what a country adds because it knows the data: a source's prices, an internal id, a tag mappers use differently here. Only the calibration reads it, so a key written by hand into atp_writable_tags is not blocked.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^*]+\\*?$"
+          },
+          "default": [],
+          "examples": [
+            [
+              "charge:*"
+            ]
           ]
         }
       }
@@ -473,7 +488,10 @@
           "gov_osservaprezzi_carburanti_it": [
             "fuel:*"
           ]
-        }
+        },
+        "atp_denied_tags": [
+          "charge:*"
+        ]
       },
       "app": {
         "env": "PRODUCTION",

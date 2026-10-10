@@ -205,7 +205,8 @@ country, its mainland code, its territories and the codes that contain it
 and excludes none. `nsi_writable_tags` is configuration for the same reason: the list is produced
 by measuring, tag by tag, how often NSI agrees with the country's own OSM
 objects — `scripts/calibrate_nsi_tags.py` writes it, nobody edits it by hand,
-and it is never copied from another country.
+and it is never copied from another country. `atp_writable_tags` is measured
+the same way, per spider, by `scripts/calibrate_atp_tags.py` (spec 07 §6).
 
 `calling_codes` and `trunk_prefix` are what lets the international and the
 national writing of a number meet: a country answers to several codes, and the

@@ -200,6 +200,7 @@ def test_the_default_is_no_identifier_matching_and_no_extra_writables() -> None:
 
     assert settings.country.identifier_tags == {}
     assert settings.country.atp_writable_tags == {}
+    assert settings.country.atp_denied_tags == ()
 
 
 def test_identifier_tags_arrive_per_spider_with_a_universal_layer() -> None:
@@ -224,9 +225,20 @@ def test_atp_writable_tags_arrive_per_spider() -> None:
     assert settings.country.atp_writable_tags == {"gov_osservaprezzi_carburanti_it": ("fuel:*",)}
 
 
+def test_atp_denied_tags_arrive_as_patterns() -> None:
+    assert load(country={"atp_denied_tags": ["charge:*", "nsi_id"]}).country.atp_denied_tags == (
+        "charge:*",
+        "nsi_id",
+    )
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [
+        # a list of patterns, not a per-spider map
+        ("atp_denied_tags", {"spider": ["charge:*"]}),
+        ("atp_denied_tags", [""]),
+        ("atp_denied_tags", ["charge:*.yes"]),
         # a mapping of spider -> pairs is required, not a flat map or a list
         ("identifier_tags", {"ref": "ref:mise"}),
         ("identifier_tags", ["ref:mise"]),
