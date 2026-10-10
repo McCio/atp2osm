@@ -1888,6 +1888,10 @@ msgid "Confirm the integration"
 msgstr "Conferma l'integrazione"
 
 #: website/templates/brands/:brand_wikidata/confirm.html:79
+msgid "The complete change list"
+msgstr "L'elenco completo delle modifiche"
+
+#: website/templates/brands/:brand_wikidata/confirm.html:79
 msgid "This action cannot be undone"
 msgstr "Questa azione non può essere annullata"
 

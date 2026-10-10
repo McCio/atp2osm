@@ -941,6 +941,9 @@ def test_the_confirmation_sums_up_the_batch(
     assert context["wave_number"] == 1
     # The log the page offers is the batch itself.
     assert '"id": 3' in context["logs"]
+    # And the offer is on the page, not only in the context it was built from.
+    # Autoescape turned the double quotes into &#34;.
+    assert "&#34;id&#34;: 3" in res.text
 
 
 def test_an_empty_batch_goes_back_to_the_review(

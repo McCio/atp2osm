@@ -8,14 +8,14 @@ msgid ""
 msgstr ""
 "Project-Id-Version: atp2osm VERSION\n"
 "Report-Msgid-Bugs-To: https://github.com/hagatopaxi/atp2osm-import/issues\n"
-"POT-Creation-Date: 2026-09-26 11:44+0200\n"
+"POT-Creation-Date: 2026-10-10 10:45+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.18.0\n"
 
 #: src/templating.py:62
 msgid "The data is being prepared, this instance has not run its first refresh yet."
@@ -1555,7 +1555,7 @@ msgstr ""
 msgid "Edit the brand"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/confirm.html:90
+#: website/templates/brands/:brand_wikidata/confirm.html:97
 #: website/templates/brands/:brand_wikidata/rejected.html:23
 #: website/templates/brands/:brand_wikidata/validate.html:343
 #: website/templates/todo.html:190
@@ -1619,19 +1619,23 @@ msgstr ""
 msgid "Points updated"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/confirm.html:76
+#: website/templates/brands/:brand_wikidata/confirm.html:79
+msgid "The complete change list"
+msgstr ""
+
+#: website/templates/brands/:brand_wikidata/confirm.html:83
 msgid "Confirm the integration"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/confirm.html:79
+#: website/templates/brands/:brand_wikidata/confirm.html:86
 msgid "This action cannot be undone"
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/confirm.html:81
+#: website/templates/brands/:brand_wikidata/confirm.html:88
 msgid "Careful! The changes cannot be reverted from here."
 msgstr ""
 
-#: website/templates/brands/:brand_wikidata/confirm.html:87
+#: website/templates/brands/:brand_wikidata/confirm.html:94
 msgid "Integrate the data"
 msgstr ""
 

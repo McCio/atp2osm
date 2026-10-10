@@ -73,6 +73,13 @@
     </table>
 </div>
 
+{# The whole batch before the irreversible send: the log the page offers is
+   the batch itself. Collapsed — it is a last-chance scan, not the reading. #}
+<details class="mt-4">
+    <summary class="cursor-pointer text-sm muted">{{ _('The complete change list') }}</summary>
+    <pre class="overflow-x-auto font-mono text-xs whitespace-pre-wrap"><code>{{ logs }}</code></pre>
+</details>
+
 <button class="btn btn-primary mt-4 self-end" onclick="document.getElementById('last_confirm_modal').show()">{{ _('Confirm the integration') }}</button>
 <dialog id="last_confirm_modal" class="modal">
     <div class="modal-box">
