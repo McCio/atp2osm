@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   postgis:
-    image: docker.io/postgis/postgis:latest
+    image: docker.io/postgis/postgis:16-3.4
     environment:
       POSTGRES_DB: ${OSM_DB_NAME}
       POSTGRES_USER: ${OSM_DB_USER}
