@@ -126,6 +126,13 @@ podman-compose run osm2pgsql osm2pgsql --output flex -S /osm2pgsql/generic.lua -
 # Rebuild everything, ignoring what data_imports and the table stamps say
 # was already done (a file the code now reads differently, a doubt):
 #   ATP2OSM_FORCE=1 ./run-pipeline.sh
+# It is two switches, and FORCE sets both. FORCE_DOWNLOAD fetches the sources
+# again (ATP, NSI, the PBFs that are not on disk); FORCE_IMPORT rebuilds the
+# tables and views from what is already on disk — a changed configuration, say,
+# since `atp_places.writable_tags` is computed at import. The ATP import reads
+# the kept `latest.parquet`; a PBF that is not on disk is downloaded all the
+# same, because the import needs it (`ATP2OSM_KEEP_DUMPS=1` keeps them):
+#   ATP2OSM_FORCE_IMPORT=1 ./run-pipeline.sh
 
 # Import a fraction of the country instead of the nine extracts: shorten the
 # `geofabrik` list of a configuration file of your own, and point

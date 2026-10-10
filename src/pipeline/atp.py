@@ -17,6 +17,8 @@ from src.pipeline import _matview
 from src.pipeline._db import (
     Connection,
     connect,
+    forced_download,
+    forced_import,
     keep_dumps,
     last_import_comment,
     last_import_date,
@@ -443,7 +445,7 @@ def load_spiders(cur: psycopg.Cursor[Any], path: Path, table: str) -> None:
 def download_atp() -> None:
     conn = connect()
     try:
-        last_date = last_import_date(conn, "atp")
+        last_date = last_import_date(conn, "atp", forced=forced_download())
         start_import(conn, "atp")
 
         with unavailable_if_unreachable("ATP"):
@@ -705,13 +707,13 @@ def import_atp() -> None:
             )
 
         parquet_mtime = datetime.fromtimestamp(PARQUET_PATH.stat().st_mtime, tz=UTC)
-        last_date = last_import_date(conn, "atp")
+        last_date = last_import_date(conn, "atp", forced=forced_import())
         version = app_version()
 
         if (
             last_date is not None
             and parquet_mtime <= last_date
-            and last_import_comment(conn, "atp") == version
+            and last_import_comment(conn, "atp", forced=forced_import()) == version
         ):
             # download_atp already closed the row it opened with 'skipped':
             # recording here too would add a second row for the same run.

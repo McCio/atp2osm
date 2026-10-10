@@ -56,6 +56,8 @@ services:
     environment:
       ATP2OSM_CONFIG: /app/config.json
       ATP2OSM_FORCE: ${ATP2OSM_FORCE:-}
+      ATP2OSM_FORCE_DOWNLOAD: ${ATP2OSM_FORCE_DOWNLOAD:-}
+      ATP2OSM_FORCE_IMPORT: ${ATP2OSM_FORCE_IMPORT:-}
     volumes:
       - ./config.json:/app/config.json:ro,Z
       - ./data:/app/data:Z

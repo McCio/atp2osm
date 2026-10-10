@@ -21,7 +21,7 @@ from typing import Any, LiteralString
 
 from psycopg import Connection, Cursor, sql
 
-from src.pipeline._db import forced
+from src.pipeline._db import forced_import
 
 
 def signature(*inputs: object) -> str:
@@ -36,7 +36,7 @@ def signature(*inputs: object) -> str:
 
 def is_current(conn: Connection[Any], name: str, sig: str) -> bool:
     """True when `name` exists and was built from this exact signature."""
-    if forced():
+    if forced_import():
         return False
     with conn.cursor() as cur:
         cur.execute("SELECT obj_description(to_regclass(%s), 'pg_class')", (name,))

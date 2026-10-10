@@ -16,6 +16,8 @@ from src.config import get_database, get_pipeline
 from src.pipeline import _matview
 from src.pipeline._db import (
     connect,
+    forced_download,
+    forced_import,
     keep_dumps,
     last_import_comment,
     last_import_date,
@@ -138,7 +140,7 @@ def download_pbf() -> None:
 
     conn = connect()
     try:
-        last_date = last_import_date(conn, "osm")
+        last_date = last_import_date(conn, "osm", forced=forced_download())
         start_import(conn, "osm")
 
         if (
@@ -465,7 +467,7 @@ def setup_mv_places() -> None:
     newest_ts = newest_geofabrik_timestamp()
     conn = connect()
     try:
-        last_date = last_import_date(conn, "osm")
+        last_date = last_import_date(conn, "osm", forced=forced_import())
         if newest_ts is None:
             # Geofabrik down: the OSM data cannot have moved under us, but the
             # NSI / function signature below may still require a rebuild.
@@ -483,7 +485,7 @@ def setup_mv_places() -> None:
         # whose body a migration redefines and a migration ships with a deploy.
         signature = _matview.signature(
             app_version(),
-            last_import_comment(conn, "nsi"),
+            last_import_comment(conn, "nsi", forced=forced_import()),
         )
         if (
             last_date

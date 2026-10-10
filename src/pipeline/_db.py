@@ -9,12 +9,20 @@ from src.config import get_database
 Connection = psycopg.Connection[Any]
 
 
-def forced() -> bool:
-    """ATP2OSM_FORCE=1: every step rebuilds as if nothing had ever been
-    imported. Every guard reads the previous run through the helpers below
-    or through _matview.is_current, so this is the one place to lie.
+def forced_download() -> bool:
+    """ATP2OSM_FORCE_DOWNLOAD=1 (or ATP2OSM_FORCE=1, which sets both): the
+    source steps fetch again, as if nothing had ever been downloaded.
     """
-    return bool(os.environ.get("ATP2OSM_FORCE"))
+    return bool(os.environ.get("ATP2OSM_FORCE") or os.environ.get("ATP2OSM_FORCE_DOWNLOAD"))
+
+
+def forced_import() -> bool:
+    """ATP2OSM_FORCE_IMPORT=1 (or ATP2OSM_FORCE=1): the steps that build a
+    table or a view rebuild from what is on disk, as if nothing had ever been
+    imported. A guard reads the previous run through the helpers below, which
+    take the switch of its own kind, or through _matview.is_current.
+    """
+    return bool(os.environ.get("ATP2OSM_FORCE") or os.environ.get("ATP2OSM_FORCE_IMPORT"))
 
 
 def keep_dumps() -> bool:
@@ -31,8 +39,13 @@ def connect() -> Connection:
     return psycopg.connect(get_database().conninfo)
 
 
-def last_import_date(conn: Connection, import_type: str) -> datetime | None:
-    if forced():
+def last_import_date(
+    conn: Connection, import_type: str, *, forced: bool = False
+) -> datetime | None:
+    """`forced` is the caller's switch (forced_download or forced_import): no
+    previous import, whatever the table says.
+    """
+    if forced:
         return None
     with conn.cursor() as cur:
         cur.execute(
@@ -44,9 +57,9 @@ def last_import_date(conn: Connection, import_type: str) -> datetime | None:
         return row[0] if row else None
 
 
-def last_import_comment(conn: Connection, import_type: str) -> str | None:
+def last_import_comment(conn: Connection, import_type: str, *, forced: bool = False) -> str | None:
     """Comment of the last resolved import — NSI stores its npm version there."""
-    if forced():
+    if forced:
         return None
     with conn.cursor() as cur:
         cur.execute(

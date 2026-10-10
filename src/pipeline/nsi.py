@@ -18,6 +18,7 @@ import requests
 from src.config import get_country
 from src.pipeline._db import (
     connect,
+    forced_download,
     last_import_comment,
     record_import,
     start_import,
@@ -260,7 +261,7 @@ def _version_date(version: str) -> datetime:
 def download_nsi() -> None:
     conn = connect()
     try:
-        last_stamp = last_import_comment(conn, "nsi")
+        last_stamp = last_import_comment(conn, "nsi", forced=forced_download())
         start_import(conn, "nsi")
 
         with unavailable_if_unreachable("NSI"):

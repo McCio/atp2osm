@@ -5,7 +5,7 @@ from psycopg import Cursor, sql
 
 from src.matching import matched_poi_sql, waves_lateral_sql
 from src.pipeline import _matview
-from src.pipeline._db import connect, last_import_comment, last_import_date
+from src.pipeline._db import connect, forced_import, last_import_comment, last_import_date
 from src.pipeline._version import app_version
 
 logger = logging.getLogger(__name__)
@@ -79,9 +79,9 @@ def create_mv_places_brand() -> None:
         # then disagree on how many POIs a brand has left.
         signature = _matview.signature(
             app_version(),
-            last_import_date(conn, "osm"),
-            last_import_date(conn, "atp"),
-            last_import_comment(conn, "nsi"),  # the NSI version string
+            last_import_date(conn, "osm", forced=forced_import()),
+            last_import_date(conn, "atp", forced=forced_import()),
+            last_import_comment(conn, "nsi", forced=forced_import()),  # the NSI version string
         )
         if _matview.is_current(conn, "mv_places_brand", signature) and (
             _matview.is_current(conn, "mv_places_spider", signature)

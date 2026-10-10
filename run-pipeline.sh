@@ -17,6 +17,8 @@ podman run --rm \
     --env-file "$PROJECT_DIR/.env" \
     --env ATP2OSM_CONFIG=/app/config.json \
     --env ATP2OSM_FORCE \
+    --env ATP2OSM_FORCE_DOWNLOAD \
+    --env ATP2OSM_FORCE_IMPORT \
     -v "$PROJECT_DIR/config.json:/app/config.json:ro,Z" \
     -v "$PROJECT_DIR/data:/app/data:Z" \
     "${IMAGE_NAME}:latest" \
