@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: atp2osm VERSION\n"
 "Report-Msgid-Bugs-To: https://github.com/hagatopaxi/atp2osm-import/issues\n"
-"POT-Creation-Date: 2026-10-10 10:45+0200\n"
+"POT-Creation-Date: 2026-10-10 16:07+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -26,7 +26,7 @@ msgstr ""
 msgid "ATP data integration (%(subdivision)s; %(brand)s)"
 msgstr ""
 
-#: src/routes/brands.py:272
+#: src/routes/brands.py:273
 msgid "OpenStreetMap could not be reached: nothing was changed."
 msgstr ""
 
@@ -651,7 +651,7 @@ msgid "Spatial and attribute matching"
 msgstr ""
 
 #: website/templates/docs.html:164
-msgid "Every ATP POI is matched against the OpenStreetMap nodes within <strong>500 m</strong>, checking that at least one attribute is shared among <span class=\"font-mono text-xs\">brand:wikidata</span>, <span class=\"font-mono text-xs\">brand</span>, <span class=\"font-mono text-xs\">name</span>, <span class=\"font-mono text-xs\">phone</span>, <span class=\"font-mono text-xs\">website</span>, <span class=\"font-mono text-xs\">email</span>. Ambiguous matches (several OpenStreetMap nodes for one ATP POI) are dropped."
+msgid "Every ATP POI is matched against the OpenStreetMap nodes within <strong>500 m</strong>, checking that at least one attribute is shared among <span class=\"font-mono text-xs\">brand:wikidata</span>, <span class=\"font-mono text-xs\">brand</span>, <span class=\"font-mono text-xs\">name</span>, <span class=\"font-mono text-xs\">phone</span>, <span class=\"font-mono text-xs\">website</span>, <span class=\"font-mono text-xs\">email</span>, or when an identifier the source exports (a registry code) equals the one the node carries. An identifier settles the match: a node carrying a different one is another place. Ambiguous matches (several OpenStreetMap nodes for one ATP POI) are dropped, unless an identifier tells which node it is."
 msgstr ""
 
 #: website/templates/docs.html:170
@@ -659,7 +659,7 @@ msgid "Computing the missing tags"
 msgstr ""
 
 #: website/templates/docs.html:171
-msgid "For every match kept, the tool computes which tags exist in ATP but not in OpenStreetMap. Only the missing ones are offered: <strong>an existing tag is never changed.</strong>"
+msgid "For every match kept, the tool computes which tags exist in ATP but not in OpenStreetMap. Wave 1 offers only the missing ones: <strong>an existing tag is not changed</strong>, except the stable tags (the fuels a station sells, say) of a source measured to agree with OpenStreetMap, which replace a different value. Wave 2 replaces values. A value a mapper posted recently is never replaced."
 msgstr ""
 
 #: website/templates/docs.html:176
@@ -770,7 +770,7 @@ msgid "Matched"
 msgstr ""
 
 #: website/templates/docs.html:305
-msgid "Those with an OpenStreetMap object within 500 m sharing a brand, a name, an email, a phone or a website. The rest is either missing from OpenStreetMap, or present without any attribute to recognise it by."
+msgid "Those with an OpenStreetMap object within 500 m sharing a brand, a name, an email, a phone, a website or an identifier. The rest is either missing from OpenStreetMap, or present without any attribute to recognise it by."
 msgstr ""
 
 #: website/templates/docs.html:306

@@ -4,7 +4,7 @@ Specification for matching ATP entries on **source-assigned identifiers**
 instead of wikidata only, and for writing the other **stable** tags a source
 exports. Working case: the Italian fuel-station registry (Osservaprezzi /
 MIMIT, ex-MISE) carried inside ATP by the spider
-`gov_osservaprozzi_carburanti_it`.
+`gov_osservaprezzi_carburanti_it`.
 
 Numbers cited are measured on the MIMIT `anagrafica_impianti_attivi.csv` of
 2026-10-09 (23 933 active stations) and on the French development parquet

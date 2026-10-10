@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: atp2osm VERSION\n"
 "Report-Msgid-Bugs-To: https://github.com/hagatopaxi/atp2osm-import/issues\n"
-"POT-Creation-Date: 2026-09-26 11:44+0200\n"
+"POT-Creation-Date: 2026-10-10 16:07+0200\n"
 "PO-Revision-Date: 2026-09-06 17:06+0200\n"
 "Last-Translator: the atp2osm contributors\n"
 "Language: fr\n"
@@ -16,7 +16,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.18.0\n"
 
 #: src/templating.py:62
 msgid "The data is being prepared, this instance has not run its first refresh yet."
@@ -27,7 +27,7 @@ msgstr "Les données sont en cours de préparation : cette instance n’a pas en
 msgid "ATP data integration (%(subdivision)s; %(brand)s)"
 msgstr "Intégration des données ATP (%(subdivision)s ; %(brand)s)"
 
-#: src/routes/brands.py:272
+#: src/routes/brands.py:273
 msgid "OpenStreetMap could not be reached: nothing was changed."
 msgstr "OpenStreetMap n’a pas pu être joint : rien n’a été modifié."
 
@@ -652,16 +652,16 @@ msgid "Spatial and attribute matching"
 msgstr "Correspondance spatiale et attributaire"
 
 #: website/templates/docs.html:164
-msgid "Every ATP POI is matched against the OpenStreetMap nodes within <strong>500 m</strong>, checking that at least one attribute is shared among <span class=\"font-mono text-xs\">brand:wikidata</span>, <span class=\"font-mono text-xs\">brand</span>, <span class=\"font-mono text-xs\">name</span>, <span class=\"font-mono text-xs\">phone</span>, <span class=\"font-mono text-xs\">website</span>, <span class=\"font-mono text-xs\">email</span>. Ambiguous matches (several OpenStreetMap nodes for one ATP POI) are dropped."
-msgstr "Chaque POI ATP est mis en correspondance avec les nœuds OpenStreetMap dans un rayon de <strong>500 m</strong>, en vérifiant qu'au moins un attribut est commun parmi <span class=\"font-mono text-xs\">brand:wikidata</span>, <span class=\"font-mono text-xs\">brand</span>, <span class=\"font-mono text-xs\">name</span>, <span class=\"font-mono text-xs\">phone</span>, <span class=\"font-mono text-xs\">website</span>, <span class=\"font-mono text-xs\">email</span>. Les correspondances ambiguës (plusieurs nœuds OpenStreetMap pour un même POI ATP) sont écartées."
+msgid "Every ATP POI is matched against the OpenStreetMap nodes within <strong>500 m</strong>, checking that at least one attribute is shared among <span class=\"font-mono text-xs\">brand:wikidata</span>, <span class=\"font-mono text-xs\">brand</span>, <span class=\"font-mono text-xs\">name</span>, <span class=\"font-mono text-xs\">phone</span>, <span class=\"font-mono text-xs\">website</span>, <span class=\"font-mono text-xs\">email</span>, or when an identifier the source exports (a registry code) equals the one the node carries. An identifier settles the match: a node carrying a different one is another place. Ambiguous matches (several OpenStreetMap nodes for one ATP POI) are dropped, unless an identifier tells which node it is."
+msgstr "Chaque POI ATP est mis en correspondance avec les nœuds OpenStreetMap dans un rayon de <strong>500 m</strong>, en vérifiant qu'au moins un attribut est commun parmi <span class=\"font-mono text-xs\">brand:wikidata</span>, <span class=\"font-mono text-xs\">brand</span>, <span class=\"font-mono text-xs\">name</span>, <span class=\"font-mono text-xs\">phone</span>, <span class=\"font-mono text-xs\">website</span>, <span class=\"font-mono text-xs\">email</span>, ou lorsqu'un identifiant exporté par la source (un code de registre) est égal à celui que porte le nœud. Un identifiant tranche : un nœud portant un identifiant différent est un autre lieu. Les correspondances ambiguës (plusieurs nœuds OpenStreetMap pour un même POI ATP) sont écartées, sauf si un identifiant désigne le nœud."
 
 #: website/templates/docs.html:170
 msgid "Computing the missing tags"
 msgstr "Calcul des tags manquants"
 
 #: website/templates/docs.html:171
-msgid "For every match kept, the tool computes which tags exist in ATP but not in OpenStreetMap. Only the missing ones are offered: <strong>an existing tag is never changed.</strong>"
-msgstr "Pour chaque correspondance retenue, l'outil calcule quels tags sont présents dans ATP mais absents d'OpenStreetMap. Seuls les tags manquants sont proposés : <strong>un tag existant n'est jamais modifié.</strong>"
+msgid "For every match kept, the tool computes which tags exist in ATP but not in OpenStreetMap. Wave 1 offers only the missing ones: <strong>an existing tag is not changed</strong>, except the stable tags (the fuels a station sells, say) of a source measured to agree with OpenStreetMap, which replace a different value. Wave 2 replaces values. A value a mapper posted recently is never replaced."
+msgstr "Pour chaque correspondance retenue, l'outil calcule les tags présents dans ATP mais absents d'OpenStreetMap. La vague 1 ne propose que les tags manquants : <strong>un tag existant n'est pas modifié</strong>, sauf les tags stables (les carburants d'une station, par exemple) d'une source dont l'accord avec OpenStreetMap a été mesuré, qui remplacent une valeur différente. La vague 2 remplace des valeurs. Une valeur postée récemment par un contributeur n'est jamais remplacée."
 
 #: website/templates/docs.html:176
 msgid "Review and integration"
@@ -771,8 +771,8 @@ msgid "Matched"
 msgstr "Correspondances"
 
 #: website/templates/docs.html:305
-msgid "Those with an OpenStreetMap object within 500 m sharing a brand, a name, an email, a phone or a website. The rest is either missing from OpenStreetMap, or present without any attribute to recognise it by."
-msgstr "Ceux qui ont un objet OpenStreetMap à moins de 500 m partageant une marque, un nom, un email, un téléphone ou un site web. Les autres sont absents d'OpenStreetMap, ou présents sans aucun attribut permettant de les reconnaître."
+msgid "Those with an OpenStreetMap object within 500 m sharing a brand, a name, an email, a phone, a website or an identifier. The rest is either missing from OpenStreetMap, or present without any attribute to recognise it by."
+msgstr "Ceux qui ont un objet OpenStreetMap à moins de 500 m partageant une marque, un nom, un email, un téléphone, un site web ou un identifiant. Les autres sont absents d'OpenStreetMap, ou présents sans aucun attribut permettant de les reconnaître."
 
 #: website/templates/docs.html:306
 msgid "To integrate"
@@ -1556,7 +1556,7 @@ msgstr "Supprimer"
 msgid "Edit the brand"
 msgstr "Modifier la marque"
 
-#: website/templates/brands/:brand_wikidata/confirm.html:90
+#: website/templates/brands/:brand_wikidata/confirm.html:97
 #: website/templates/brands/:brand_wikidata/rejected.html:23
 #: website/templates/brands/:brand_wikidata/validate.html:343
 #: website/templates/todo.html:190
@@ -1620,23 +1620,23 @@ msgstr "N°"
 msgid "Points updated"
 msgstr "Points mis à jour"
 
-#: website/templates/brands/:brand_wikidata/confirm.html:76
-msgid "Confirm the integration"
-msgstr "Confirmer l'intégration"
-
 #: website/templates/brands/:brand_wikidata/confirm.html:79
 msgid "The complete change list"
 msgstr "La liste complète des changements"
 
-#: website/templates/brands/:brand_wikidata/confirm.html:79
+#: website/templates/brands/:brand_wikidata/confirm.html:83
+msgid "Confirm the integration"
+msgstr "Confirmer l'intégration"
+
+#: website/templates/brands/:brand_wikidata/confirm.html:86
 msgid "This action cannot be undone"
 msgstr "Attention, cette action est irréversible"
 
-#: website/templates/brands/:brand_wikidata/confirm.html:81
+#: website/templates/brands/:brand_wikidata/confirm.html:88
 msgid "Careful! The changes cannot be reverted from here."
 msgstr "Attention ! Les changements seront irréversibles."
 
-#: website/templates/brands/:brand_wikidata/confirm.html:87
+#: website/templates/brands/:brand_wikidata/confirm.html:94
 msgid "Integrate the data"
 msgstr "Intégrer les données"
 
@@ -1944,4 +1944,7 @@ msgstr "503 - Temporairement indisponible"
 #: website/templates/errors/503.html:6
 msgid "Please try again in a few minutes."
 msgstr "Réessayez dans quelques minutes."
+
+#~ msgid "For every match kept, the tool computes which tags exist in ATP but not in OpenStreetMap. Only the missing ones are offered: <strong>an existing tag is never changed.</strong>"
+#~ msgstr "Pour chaque correspondance retenue, l'outil calcule quels tags sont présents dans ATP mais absents d'OpenStreetMap. Seuls les tags manquants sont proposés : <strong>un tag existant n'est jamais modifié.</strong>"
 
