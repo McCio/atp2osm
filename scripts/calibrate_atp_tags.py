@@ -1,30 +1,21 @@
-"""Measure, tag by tag, how often an ATP spider agrees with the OSM objects it matches.
+"""Measure, per spider and tag, how often ATP agrees with the OSM objects it matches.
 
-`atp_writable_tags` is not a list anybody guesses: a registry's `fuel:*` may
-agree with OSM almost everywhere, a crowd-sourced spider's with little, and the
-write replaces what the object carries (specs/07_gov-ref-matching.md §6). So the
-list is measured, per spider, on the pairs the matcher itself produces.
+`atp_writable_tags` is measured, not guessed: a write replaces what the object
+carries (specs/07_gov-ref-matching.md §6), so a tag is writable only where OSM
+already agrees. The pairs are the ones the matcher produces.
 
-    ATP2OSM_CONFIG=… OSM_DB_PASSWORD=… [other secrets] \
-        uv run python scripts/calibrate_atp_tags.py \
+    uv run --env-file .env scripts/calibrate_atp_tags.py
         [--spider gov_osservaprezzi_carburanti_it] [--pattern 'fuel:*']
 
-Without `--spider` every spider with a match is measured, which is the whole
-matching query over the country: meant for a calibration run, not a quick look.
-Every property the spider exports is measured, bar the ones DENIED names, the
-ones `country.atp_denied_tags` adds and the identifier keys the configuration
-maps: those belong to other mechanisms, or to what the country knows about its
-data. `--pattern` (a key, or a prefix with a trailing `*`) narrows the search, it
-never widens it past the denylist. The rates are per concrete key, and the keys above
-the threshold are what gets written to `country.atp_writable_tags` of the
-configuration file, replacing the entry of each spider measured and leaving the
-others alone. A key the spider starts exporting later is not covered until this
-is rerun. The ATP parquet is read for the properties: `atp_places` keeps only the
-ones already configured, so the list needs no seeding.
+Agreement is the share of objects carrying the tag that carry the source's
+value; an object lacking it counts for nothing, since that is the tag being added.
+Every exported property is measured, except DENIED, `country.atp_denied_tags` and
+the mapped identifier keys. Keys above the threshold replace the spider's entry in
+`country.atp_writable_tags`; spiders without a match keep theirs. Properties come
+from the ATP parquet: rerun when a spider starts exporting a new key.
 
-Agreement is the share of the objects carrying the tag that carry the source's
-value; an object lacking it counts for nothing, since that is the tag being
-added, not disputed. Read-only on the database.
+Without `--spider` it runs the matching query over the whole country, which is slow.
+Read-only on the database; rewrites the configuration file.
 """
 
 import argparse
@@ -167,7 +158,9 @@ def properties_of(ids: list[str]) -> dict[str, Properties]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
         "--spider",
         action="append",
