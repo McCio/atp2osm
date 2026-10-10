@@ -5,20 +5,23 @@ agreement on French data, and a tag that misbehaves elsewhere produces no
 error, only thousands of badly tagged objects. So the list is measured again
 for every country — see specs/03_internationalisation.md §6.
 
-    OSM_DB_NAME=… OSM_DB_USER=… OSM_DB_PASSWORD=… OSM_DB_HOST=… OSM_DB_PORT=… \
-        uv run python scripts/calibrate_nsi_tags.py countries/fr.json
+    ATP2OSM_CONFIG=… OSM_DB_PASSWORD=… [other secrets] \
+        uv run python scripts/calibrate_nsi_tags.py
 
-Prints the table and, unless --dry-run, writes the two keys of the country
-file: `nsi_writable_tags` (the tags above the threshold) and `nsi_calibration`
-(the whole measurement that justifies the selection). Nobody copies a rate by
-hand; a new NSI release is re-evaluated by rerunning this and diffing.
+Prints the table and, unless --dry-run, writes two keys of `country` in the
+configuration file ATP2OSM_CONFIG names: `nsi_writable_tags` (the tags above the
+threshold) and `nsi_calibration` (the NSI release, the date and the rate of
+every tag measured, which is what justifies the selection). Nobody copies a
+rate by hand; a new NSI release is re-evaluated by rerunning this and diffing.
 
 Read-only on the database: everything it creates lives in a schema it drops on
 the way out.
 """
 
 import argparse
+import datetime
 import json
+import os
 import pathlib
 import re
 import sys
@@ -167,11 +170,29 @@ AGREEMENT_SQL = f"""
 """  # noqa: S608 — the schema name is a constant of this script
 
 
+def write_calibration(
+    config: dict[str, Any],
+    writable: list[str],
+    calibration: dict[str, dict[str, Any]],
+    nsi_version: str | None,
+    measured_at: datetime.date,
+) -> None:
+    """The two keys of `country`, in the shape config.schema.json declares.
+
+    The schema keeps only the rate (between 0 and 1) per tag: the counts behind
+    it are on the printed table, and `min_observed` has already used them.
+    """
+    country: dict[str, Any] = config["country"]
+    country["nsi_writable_tags"] = writable
+    country["nsi_calibration"] = {
+        "nsi_version": nsi_version,
+        "measured_at": measured_at.isoformat(),
+        "agreement": {key: round(m["rate"] / 100, 4) for key, m in calibration.items()},
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "country_file", type=pathlib.Path, help="country configuration file, created if absent"
-    )
     parser.add_argument("--nsi-file", type=pathlib.Path, default=None)
     parser.add_argument(
         "--threshold",
@@ -235,14 +256,17 @@ def main() -> None:
 
     if args.dry_run:
         return
-    config: dict[str, Any] = {}
-    if args.country_file.exists():
-        config = json.loads(args.country_file.read_text())
-    config["nsi_writable_tags"] = writable
-    config["nsi_calibration"] = calibration
-    args.country_file.parent.mkdir(parents=True, exist_ok=True)
-    args.country_file.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
-    print(f"\nWrote nsi_writable_tags ({len(writable)} tags) to {args.country_file}")
+    path = pathlib.Path(os.environ["ATP2OSM_CONFIG"])
+    config: dict[str, Any] = json.loads(path.read_text())
+    write_calibration(
+        config,
+        writable,
+        calibration,
+        nsi_json.get("_meta", {}).get("version"),
+        datetime.datetime.now(datetime.UTC).date(),
+    )
+    path.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
+    print(f"\nWrote nsi_writable_tags ({len(writable)} tags) to {path}")
 
 
 if __name__ == "__main__":

@@ -737,18 +737,18 @@ une langue du pays cible — un contributeur anglophone intégrant des données
 allemandes écrit un commentaire allemand, parce que c'est la communauté
 allemande qui le relira.
 
-Il devient donc un gabarit porté par la configuration pays (§5), pas une chaîne
-traduite — **un par locale du pays** :
+Il devient donc un message gettext (`gettext` dans `src/upload.py`), avec
+`{subdivision}` et `{brand}` — **un par locale du pays**, porté par le catalogue
+de cette langue :
 
-```python
-changeset_comments = {
-    "de": "ATP-Datenimport ({subdivision}; {brand})",
-    "fr": "Intégration des données ATP ({subdivision} ; {brand})",
-    "it": "Importazione dati ATP ({subdivision}; {brand})",
-}
+```
+de: "ATP-Datenimport ({subdivision}; {brand})"
+fr: "Intégration des données ATP ({subdivision} ; {brand})"
+it: "Importazione dati ATP ({subdivision}; {brand})"
 ```
 
-Dans un pays multilingue, le commentaire suit **la langue choisie par le
+Les langues possibles sont celles de `locales` (§5), qui borne ce que le
+contributeur peut choisir. Dans un pays multilingue, le commentaire suit **la langue choisie par le
 contributeur**, avec repli sur `locales[0]`. Un contributeur qui travaille en
 français à Genève écrit un commentaire français : c'est bien une langue du pays,
 donc lisible par la communauté qui relira. La règle inchangée est qu'aucune
@@ -758,7 +758,8 @@ anglais sur une instance française produit toujours un commentaire français.
 Le raffinement qu'on ne fait pas : suivre la langue **de la subdivision**
 (le canton, la commune) plutôt que celle du contributeur. Ce serait plus juste au
 Tessin, et ça demanderait une carte linguistique par subdivision. Le jour où une
-communauté le réclame, `Country` saura porter un dict par code de subdivision.
+communauté le réclame, la configuration saura porter un dict par code de
+subdivision.
 
 ### C3 — L'anglais dans le code
 
@@ -768,7 +769,7 @@ B), `src/upload.py:156`, `src/pipeline/atp2osm.py:11`, la migration 015, et
 plusieurs commentaires SQL dans `MATCHED_POI_SQL`. À nettoyer dans cette phase :
 c'est le moment où le projet devient lisible par des non-francophones.
 
-Les messages de commit restent en français (règle inchangée).
+Les messages de commit sont en anglais, comme le code (`AGENTS.md`).
 
 ---
 
@@ -793,25 +794,35 @@ le chemin de configuration externe est réellement testé : un fichier par défa
 embarqué serait le chemin que tout le monde emprunte, et celui des tiers
 pourrirait sans que personne s'en aperçoive.
 
+Le fichier a deux sections : `country`, ce qui change d'un pays à l'autre, et
+`app`, ce qui change d'un déploiement à l'autre (D4). Les secrets restent dans
+l'environnement.
+
 ```json
 {
-  "code": "de",
-  "geofabrik": ["europe/germany"],
-  "admin_level": 6,
-  "admin_level_max": 8,
-  "locales": ["de"],
-  "changeset_comments": {
-    "de": "ATP-Datenimport ({subdivision}; {brand})"
+  "country": {
+    "territory_codes": ["de"],
+    "locales": ["de"],
+    "timezone": "Europe/Berlin",
+    "geofabrik": ["europe/germany"],
+    "admin_level": 6,
+    "admin_level_max": 8,
+    "match_radius_m": 500,
+    "calling_codes": ["49"],
+    "trunk_prefix": "0",
+    "nsi_locations": ["de", "150", "eu", "001"],
+    "nsi_writable_tags": ["brand:wikidata"],
+    "nsi_calibration": {
+      "nsi_version": null,
+      "measured_at": null,
+      "agreement": {}
+    }
   },
-  "nsi_locations": ["de", "150", "eu", "001"],
-  "nsi_writable_tags": ["brand:wikidata"],
-  "nsi_calibration": {
-    "nsi_version": null,
-    "measured_at": null,
-    "agreement": {}
-  },
-  "match_radius_m": 500,
-  "timezone": "Europe/Berlin"
+  "app": {
+    "base_url": "https://atp.example.de",
+    "osm_api_host": "https://api.openstreetmap.org",
+    "db": {"name": "o2p", "user": "o2p", "host": "127.0.0.1"}
+  }
 }
 ```
 
@@ -819,11 +830,11 @@ Une seule façon de le désigner, une variable d'environnement, **sans valeur pa
 défaut** :
 
 ```
-COUNTRY_CONFIG=/etc/atp2osm/country.json
+ATP2OSM_CONFIG=/etc/atp2osm/config.json
 ```
 
 Absente ou illisible, l'application refuse de démarrer — `ConfigError`, comme
-`OSM_DB_NAME` aujourd'hui. Pas de repli silencieux sur la France.
+un secret manquant. Pas de repli silencieux sur la France.
 
 Où vit ce fichier, concrètement :
 
@@ -834,39 +845,13 @@ Où vit ce fichier, concrètement :
   principal au premier `up`, exactement comme il le fait déjà pour `.env` et
   `node_modules`. Une ligne à ajouter au script, et les worktrees héritent de la
   configuration sans copie ;
-- **pour démarrer un pays**, `calibrate_nsi_tags.py --init <code>` écrit un
-  squelette complet avec les valeurs par défaut et les clés vides à remplir.
-  L'exemple est **généré**, pas livré : il ne peut pas diverger du chargeur.
+- **pour démarrer un pays**, l'exemple que porte le schéma lui-même :
+  `jq '.examples[0]' config.schema.json`. Il n'est pas livré à part : un test le
+  charge, il ne peut donc pas diverger du chargeur.
 
-(Si tu veux malgré tout un `country.json.sample` versionné pour la
-documentation, c'est le précédent de `.env.sample` et ça ne coûte rien — mais
-c'est un fichier d'exemple, jamais un défaut chargé.)
-
-Le fichier est chargé une fois, validé, puis figé dans la même dataclass
-`Country` que précédemment — le reste du code ne voit toujours qu'un objet gelé,
-jamais un dict :
-
-```python
-@dataclass(frozen=True)
-class Country:
-    """Everything that differs from one country to the next."""
-
-    code: str  # ISO 3166-1 alpha-2, matched against addr:country
-    geofabrik: tuple[str, ...]  # extract paths, without -latest.osm.pbf
-    admin_level: int  # finest subdivision level; falls back down to 2
-    admin_level_max: int  # deepest level imported; >= admin_level
-    locales: tuple[str, ...]  # first one is the default and the fallback
-    changeset_comments: dict[str, str]  # per locale; {subdivision} and {brand}
-    nsi_locations: frozenset[str]
-    nsi_writable_tags: frozenset[str]
-    match_radius_m: int = 500
-    timezone: str = "UTC"
-
-
-@lru_cache(maxsize=1)
-def get_country() -> Country:
-    return _parse(json.loads(_country_path().read_text()))
-```
+Le fichier est chargé une fois, validé, puis figé dans des dataclasses gelées
+(`Country`, `Database`, `Settings`, `src/config.py`) — le reste du code ne voit
+qu'un objet gelé, jamais un dict.
 
 #### Ce que JSON coûte, et comment on le paie
 
@@ -874,8 +859,9 @@ def get_country() -> Country:
 `nsi_writable_tags`, dont chaque entrée existe pour une raison mesurée (§6.2).
 On ne la compense pas par une clé `"_comment"` : on la remplace par **de la
 donnée**. Le bloc `nsi_calibration` porte la version NSI, la date de mesure et
-le taux d'accord relevé pour chaque tag — c'est le script de calibration qui
-l'écrit, et il n'est jamais rédigé à la main :
+le taux d'accord relevé pour chaque tag (entre 0 et 1) — c'est le script de
+calibration qui l'écrit, et il n'est jamais rédigé à la main. Les effectifs
+derrière chaque taux sont dans le tableau qu'il imprime :
 
 ```json
 "nsi_calibration": {
@@ -887,38 +873,39 @@ l'écrit, et il n'est jamais rédigé à la main :
 
 C'est mieux qu'un commentaire : ça se régénère, ça se compare d'une version NSI
 à la suivante, et un tag présent dans `nsi_writable_tags` mais absent
-d'`agreement` se repère automatiquement. **Le chargeur émet un avertissement au
-démarrage** dans ce cas — un tag écrit sans mesure derrière lui.
+d'`agreement` se voit à la relecture du diff.
 
-**Aucune validation par le langage.** Le chargeur la fait, à la main, une
-vingtaine de lignes sans dépendance : clés requises présentes, clés inconnues
+**La validation est celle du schéma JSON**, `config.schema.json`, qui est aussi
+la documentation de chaque réglage : clés requises présentes, clés inconnues
 refusées (une faute de frappe est une erreur, pas un silence), types conformes,
-`locales` non vide, `code` en deux lettres minuscules, chaque locale de
-`changeset_comments` appartenant à `locales`. Ça échoue **au démarrage**, avec le
-nom de la clé fautive — pas au premier appel qui la lit, trois heures après le
-début du pipeline.
+`territory_codes` en codes de deux lettres minuscules. Ce qu'un schéma
+n'exprime pas reste dans `src/config.py` : une locale que Babel connaît, un vrai
+fuseau IANA, `admin_level_max` au moins égal à `admin_level`. Ça échoue **au
+démarrage**, avec le nom de la clé fautive — pas au premier appel qui la lit,
+trois heures après le début du pipeline.
 
 Cette validation n'est pas une concession au format : c'est de toute façon ce
 qu'il faut quand la configuration vient de l'extérieur du dépôt. Un module
 Python l'aurait rendue superflue, mais il aurait aussi exigé que la personne qui
 la fournit soit développeuse.
 
-**Les tests** construisent un `Country` directement, ou chargent un JSON écrit
-dans `tmp_path`. Aucun ne dépend d'un fichier du dépôt, ce qui est la
-conséquence logique de n'en livrer aucun : **la configuration française n'est
-plus une donnée de test disponible**. Les tests qui ont besoin d'un pays
-plausible se donnent le leur, en trois lignes, dans une fixture.
+**Les tests** se donnent leur propre configuration (`tests/conftest.py` l'écrit
+avant que quoi que ce soit importe les réglages), ou chargent un JSON écrit dans
+`tmp_path`. Aucun ne dépend d'un fichier du dépôt, ce qui est la conséquence
+logique de n'en livrer aucun : **la configuration française n'est plus une
+donnée de test disponible**.
+
 ### D2 — Ce que ça remplace
 
 - **`constants.py`** — `_GEOFABRIK_PATHS`, dict en dur métropole + DOM + COM du
   Pacifique. Devient la liste `geofabrik`. Le cas français (neuf extraits, dont
   des territoires classés sous `australia-oceania`) reste exprimable tel quel :
   c'est une liste de chemins, pas une convention.
-- **`atp.py`** — `WHERE addr:country = 'FR'` devient `country_code`. La table
+- **`atp.py`** — `WHERE addr:country = 'FR'` devient `territory_codes`. La table
   `atp_fr` est renommée `atp_places` ; le nom fuit dans `mv_places_brand` et
   `tests/test_export.py`, à corriger avec.
 - **`atp.py`** — `_FOREIGN_COUNTRY_CODES`, la liste ISO moins `fr`. Devient la
-  liste ISO moins `country_code`, calculée, plus codée en dur. La règle de
+  liste ISO moins `territory_codes`, calculée, plus codée en dur. La règle de
   lecture ne bouge pas : **seul le suffixe du nom de spider est lu comme un code
   pays, jamais un préfixe.** C'est ce qui évite de prendre `la_halle_fr` ou
   `au_vieux_campeur` pour du laotien et de l'australien, et le raisonnement vaut
@@ -940,22 +927,24 @@ plausible se donnent le leur, en trois lignes, dans une fixture.
 
 ### D3 — Ce qu'on ne fait pas
 
-Pas de schéma JSON, pas de Pydantic, pas de couche de migration de
-configuration. Une fonction `_parse` qui lit un dict et rend un `Country`, et
-qui lève sur ce qu'elle ne comprend pas. Pas de classe de base à sous-classer
-par pays, pas de `CountryProfile` avec des surcharges : `Country` est un sac de
-valeurs gelé. Le jour où un pays a besoin de **code** et pas de valeurs — une
+Un schéma JSON, pas de Pydantic, pas de couche de migration de
+configuration. Une fonction `load` qui valide un dict contre le schéma et rend
+des dataclasses gelées, et qui lève sur ce qu'elle ne comprend pas. Pas de
+classe de base à sous-classer par pays, pas de `CountryProfile` avec des
+surcharges : `Country` est un sac de valeurs gelé. Le jour où un pays a besoin de **code** et pas de valeurs — une
 règle de rattachement qui ne tient pas dans un entier — on en reparle. Pas
 avant.
 
 Pas de versionnage du format non plus. Un champ ajouté a une valeur par défaut,
-un champ retiré est ignoré avec un avertissement. Le jour où une rupture est
-inévitable, elle sera annoncée dans les notes de version comme le reste.
+celle du schéma ; un champ retiré est refusé comme toute clé inconnue. Le jour
+où une rupture est inévitable, elle sera annoncée dans les notes de version
+comme le reste.
 
-Pas de variable d'environnement par réglage non plus : `COUNTRY_CONFIG` seule
-désigne le pays, tout le reste vient du fichier. Un réglage qu'on voudrait
-modifier sans changer de pays est le signe qu'il n'appartient pas au pays mais
-au déploiement, et il a alors sa place dans `.env` avec les autres.
+Pas de variable d'environnement par réglage non plus : `ATP2OSM_CONFIG` seule
+désigne la configuration, tout le reste vient du fichier, hors secrets. Un
+réglage qu'on voudrait modifier sans changer de pays est le signe qu'il
+n'appartient pas au pays mais au déploiement : il a sa place dans la section
+`app` du même fichier, et les secrets restent dans `.env`.
 
 ### D4 — Ce qui appartient au déploiement, pas au pays
 
@@ -966,11 +955,11 @@ pointe vers son propre dépôt.
 
 Ce n'est pas une propriété du pays : deux instances issues du même fork, l'une
 en France l'autre en Allemagne, partagent le même dépôt, et deux forks servant
-le même pays n'ont pas le même. Ça va donc dans `.env` et dans la dataclass
-`App`, pas dans `Country` :
+le même pays n'ont pas le même. Ça va donc dans la section `app`, pas dans
+`country` :
 
-```
-SOURCE_REPO_URL=https://github.com/<owner>/atp2osm-import
+```json
+"app": { "source_repo_url": "https://github.com/<owner>/atp2osm-import" }
 ```
 
 Optionnelle, avec le dépôt amont comme valeur par défaut — une instance qui ne
@@ -1030,16 +1019,20 @@ règle explicite : elle ne se recopie pas d'un pays à l'autre.** Elle se produi
 par la même mesure, sur les données du pays.
 
 D'où le livrable central de cette phase : **un script de calibration**,
-`scripts/calibrate_nsi_tags.py`, qui prend la base d'un pays et sort le tableau
-taux d'accord par tag, avec le nombre d'objets observés. Sans lui, la
-configuration NSI d'un nouveau pays est un vœu pieux. Avec lui, ouvrir un pays
-coûte une exécution et une lecture de tableau.
+`scripts/calibrate_nsi_tags.py`, qui prend la base d'un pays (celle que désigne
+`ATP2OSM_CONFIG`) et sort le tableau taux d'accord par tag, avec le nombre
+d'objets observés. Sans lui, la configuration NSI d'un nouveau pays est un vœu
+pieux. Avec lui, ouvrir un pays coûte une exécution et une lecture de tableau.
 
-Le script écrit **directement les deux clés du fichier pays** (§5.1) :
-`nsi_writable_tags`, les tags au-dessus du seuil, et `nsi_calibration`, la
-mesure complète qui justifie la sélection. Personne ne recopie un taux à la
-main, et une nouvelle version de NSI se réévalue en relançant le script et en
-comparant les deux blocs.
+Le script écrit **directement les deux clés de la section `country`** du même
+fichier (D1) : `nsi_writable_tags`, les tags au-dessus du seuil, et
+`nsi_calibration`, la mesure qui justifie la sélection (version NSI, date, taux
+par tag). Personne ne recopie un taux à la main, et une nouvelle version de NSI
+se réévalue en relançant le script et en comparant les deux blocs.
+
+Les tags que les sources ATP écrivent (`atp_writable_tags`) se mesurent de la
+même façon, par spider, avec `scripts/calibrate_atp_tags.py`
+(`07_gov-ref-matching.md`, §6).
 
 Un pays sans calibration démarre avec `nsi_writable_tags = ["brand:wikidata"]`
 — le seul tag dont la justesse ne dépend pas de la langue — et s'enrichit après
@@ -1124,9 +1117,9 @@ couverture que la phase A.
   remplacement du préfixe déjà présent, URL sans query ;
 - **aucune chaîne non traduite** : un test qui charge chaque catalogue et échoue
   s'il reste des `msgstr` vides ou des `#, fuzzy` ;
-- **aucune locale manquante** : pour chaque locale du pays, un
-  `changeset_comments` existe et contient bien `{subdivision}` et `{brand}`.
-  C'est le test qui empêche un changeset de partir avec un gabarit cassé.
+- **aucune locale manquante** : pour chaque locale du pays, le catalogue porte le
+  commentaire de changeset avec `{subdivision}` et `{brand}`. C'est le test qui
+  empêche un changeset de partir avec un gabarit cassé.
 
 **Phase D.** Le chargeur de configuration est une frontière de confiance — il lit
 un fichier écrit à l'extérieur du dépôt :
@@ -1134,8 +1127,8 @@ un fichier écrit à l'extérieur du dépôt :
 - chaque clé requise, absente une par une ;
 - chaque clé, avec un type faux ;
 - une clé inconnue (attendu : refus, pas un avertissement) ;
-- `admin_level_max < admin_level`, `locales` vide, `code` mal formé, locale de
-  `changeset_comments` absente de `locales`, `geofabrik` vide ;
+- `admin_level_max < admin_level`, `locales` vide, `territory_codes` mal formé,
+  `geofabrik` vide ;
 - fichier absent, JSON invalide, fichier vide ;
 - un fichier complet et valide : tous les champs arrivent intacts dans le
   `Country`, y compris les valeurs par défaut des clés optionnelles.
@@ -1149,7 +1142,8 @@ paramétrisation par pays y ajoute :
   cas existants, rejoués avec une configuration pays autre que la France, pour
   prouver qu'aucune constante française ne subsiste dans le code ;
 - le script de calibration : sur un jeu de données construit, il doit retenir
-  exactement les tags au-dessus du seuil et écrire un `nsi_calibration` complet.
+  exactement les tags au-dessus du seuil et écrire dans `country` un
+  `nsi_calibration` que le chargeur accepte.
 
 ---
 
@@ -1160,13 +1154,14 @@ paramétrisation par pays y ajoute :
   défaut et le repli ; le sélecteur n'apparaît que s'il y en a plusieurs.
 - **Un seul niveau de subdivision par POI**, choisi par décroissance depuis
   `admin_level` jusqu'au pays — jamais par territoire nommé.
-- **La configuration pays est un JSON externe**, désigné par `COUNTRY_CONFIG`,
+- **La configuration est un JSON externe**, désigné par `ATP2OSM_CONFIG`,
   sans valeur par défaut et sans aucun fichier pays livré dans le dépôt —
   l'instance française comprise. Le chemin externe doit être celui que tout le
   monde emprunte, sinon il pourrit.
 - **La justification des valeurs est de la donnée, pas un commentaire** —
   `nsi_calibration` est écrit par le script de calibration, jamais à la main.
-- **Le chargeur valide et échoue au démarrage**, clés inconnues comprises.
+- **Le chargeur valide contre `config.schema.json` et échoue au démarrage**, clés
+  inconnues comprises.
 - **Pas d'abstraction anticipée** : une dataclass gelée, pas une hiérarchie.
 - **`nsi_writable_tags` ne se recopie jamais** ; sans mesure, il se réduit à
   `brand:wikidata`.
