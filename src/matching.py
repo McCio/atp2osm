@@ -118,6 +118,12 @@ MATCHED_POI_SQL: Final = """
                 SELECT 1 FROM jsonb_object_keys(COALESCE(osm.nsi_tags, '{{}}'::jsonb)) AS k
                 WHERE NOT osm.tags ? k
             )
+            -- So does an identifier the object lacks: a registry row with no
+            -- hours, phone or website would otherwise propose nothing.
+            OR EXISTS (
+                SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
+                WHERE NOT osm.tags ? i.tag
+            )
         ) AS is_importable,
         -- Wave 2: the tags whose value ATP would replace, key -> ATP value.
         -- Computed here rather than in Python so that a single expression
@@ -192,6 +198,13 @@ MATCHED_POI_SQL: Final = """
             OR LOWER(osm.email) = LOWER(atp.email)
             OR LOWER(REGEXP_REPLACE(osm.website, '^https?://', '', 'i')) = LOWER(REGEXP_REPLACE(atp.website, '^https?://', '', 'i'))
             OR normalize_phone(osm.phone) = normalize_phone(atp.phone)
+            -- An identifier names the place itself: any pair equal joins.
+            -- The map is empty for a POI no configuration vouches for, and
+            -- jsonb_each_text of it yields no row.
+            OR EXISTS (
+                SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
+                WHERE osm.tags->>i.tag = i.value
+            )
         )
     )
     SELECT DISTINCT ON (osm_id, node_type, atp_brand_wikidata)

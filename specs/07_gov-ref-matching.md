@@ -150,13 +150,14 @@ carries):
 
 ```sql
 OR EXISTS (
-    SELECT 1 FROM jsonb_each(atp.identifiers) i(tag, value)
+    SELECT 1 FROM jsonb_each_text(atp.identifiers) i(tag, value)
     WHERE osm.tags->>i.tag = i.value
 )
 ```
 
-`jsonb_each` on an empty map yields no rows, `EXISTS` is false, un-
-configured POIs are untouched. OSM side needs no column: `osm.tags` is
+`jsonb_each_text`, not `jsonb_each`: the latter returns `value` as jsonb,
+and `text = jsonb` does not type-check. On an empty map it yields no rows,
+`EXISTS` is false, unconfigured POIs are untouched. OSM side needs no column: `osm.tags` is
 already in `mv_places`, and the tags a config may name (`ref:mise`,
 `ref:vat`, `ref`) are all in `tags` — the filter below keeps them (§4d).
 
@@ -166,7 +167,7 @@ feature is silent:
 
 ```sql
 OR EXISTS (
-    SELECT 1 FROM jsonb_each(atp.identifiers) i(tag, value)
+    SELECT 1 FROM jsonb_each_text(atp.identifiers) i(tag, value)
     WHERE NOT osm.tags ? i.tag
 )
 ```
@@ -279,8 +280,11 @@ One reviewable step each, each green (ruff, `pyright --strict`, suite):
    consumer. Example updated.
 2. **Loader**: the two jsonb recipes, indexes, bridging migration, tests
    on a parquet-shaped table (the recipes run in the test's DuckDB).
-3. **Matcher**: SQL arms a–b + `is_importable`, config-gated; tests with
-   staged `identifiers`.
+3. **Matcher**: SQL arms a–b + `is_importable`; tests with staged
+   `identifiers` (`tests/test_identifier_match.py`). Not config-gated in the
+   SQL: an empty `identifiers` map is the gate. Until slice 4 lands the
+   pre-filters (§4d), objects carrying only an identifier tag never reach
+   the join.
 4. **Writer + filters**: `apply_on_node` (§4c/§6), `generic.lua` and
    `mv_places` lists.
 5. **Receipt run** on dev data: §8 controls.
