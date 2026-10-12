@@ -135,9 +135,9 @@ def _reaches_mv_places(primary_key: str, primary_value: str) -> bool:
 
 
 # One NSI item's tags, and the row nsi_brands takes: QID, brand, name, the
-# primary tag it keys on, and the tags left to write.
+# primary tag it keys on, the tags left to write, and the `matchNames`.
 Tags = dict[str, str]
-Item = tuple[str, str | None, str | None, str, str, Tags]
+Item = tuple[str, str | None, str | None, str, str, Tags, list[str]]
 
 
 def is_country(location_set: dict[str, Any]) -> bool:
@@ -204,6 +204,7 @@ def candidate_items(nsi_json: dict[str, Any]) -> Iterator[Item]:
                 primary_key,
                 primary_value,
                 tags,
+                item.get("matchNames", []),
             )
 
 
@@ -215,7 +216,7 @@ def select_items(nsi_json: dict[str, Any]) -> list[Item]:
     """
     writable = get_country().nsi_writable_tags
     candidates: list[Item] = [
-        (*row[:5], {k: v for k, v in row[5].items() if k in writable})
+        (*row[:5], {k: v for k, v in row[5].items() if k in writable}, row[6])
         for row in candidate_items(nsi_json)
     ]
 
@@ -317,10 +318,10 @@ def import_nsi() -> None:
             cur.execute("TRUNCATE nsi_brands")
             with cur.copy(
                 "COPY nsi_brands (brand_wikidata, brand, name,"
-                " primary_key, primary_value, tags) FROM STDIN"
+                " primary_key, primary_value, tags, match_names) FROM STDIN"
             ) as copy:
                 for row in rows:
-                    copy.write_row((*row[:-1], json.dumps(row[-1])))
+                    copy.write_row((*row[:5], json.dumps(row[5]), row[6]))
         conn.commit()
         record_import(conn, "nsi", _version_date(version), "success", stamp(version))
         logger.info(

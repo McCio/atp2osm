@@ -1079,6 +1079,7 @@ def _nsi_file(path: Path, version: str, brands: list[tuple[str, str]]) -> None:
                                 "displayName": brand,
                                 "id": brand,
                                 "locationSet": {"include": ["fr"]},
+                                "matchNames": [brand.lower()],
                                 "tags": {"brand": brand, "brand:wikidata": qid, "shop": "clothes"},
                             }
                             for brand, qid in brands
@@ -1107,6 +1108,7 @@ def test_the_import_stamps_the_release_the_file_carries(
     nsi.import_nsi()
 
     assert nsi_brands(pipeline) == [("Babylone",)]
+    assert pipeline.execute("SELECT match_names FROM nsi_brands").fetchall() == [(["babylone"],)]
     assert imports(pipeline, "nsi")[-1][1:] == ("success", nsi.stamp("8.0.20260729"))
     assert not nsi.NSI_PATH.exists()
 

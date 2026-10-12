@@ -73,7 +73,7 @@ def calibration_rows(nsi_json: dict[str, Any]) -> list[Row]:
     of the group is picked would measure the coin toss, not the tag.
     """
     groups: dict[tuple[str, str, str], Group] = {}
-    for qid, brand, name, key, value, tags in candidate_items(nsi_json):
+    for qid, brand, name, key, value, tags, _match_names in candidate_items(nsi_json):
         group = groups.setdefault((qid, key, value), {"labels": (brand, name), "tags": None})
         agreed: Tags | None = group["tags"]
         group["tags"] = (

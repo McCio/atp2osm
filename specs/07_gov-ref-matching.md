@@ -318,6 +318,31 @@ integration surface, the unbranded join into already-branded objects.
 Accepted for v1; the day it matters, the list key widens — a change this
 spec does not make.
 
+### 7a. A QID recovered from NSI, on the ATP side
+
+A source row that names its brand without a `brand:wikidata` (the fuel spider
+does so for every brand its `BRANDS` dict lacks) gets the QID NSI knows for
+that label, so it reaches the brand list like any branded row. The same
+recovery `nsi_match` does for an OSM object (spec 02 §3.1), with one more
+label source:
+
+- **Done at ATP import**, in `atp_places`, not in the matview: `brand_wikidata`
+  is read everywhere (brand list, dedup, history), and one resolved column
+  keeps those readers unchanged. `nsi-import` therefore runs before
+  `atp-import`, and the ATP import's stamp carries the NSI one — a new NSI
+  release rebuilds `atp_places`, as a new revision does.
+- **Only when the row has no QID**; a QID the source gave is never replaced.
+- **Key:** the simplified `brand`, else the simplified `name` (lowercase,
+  letters and digits only, the way NSI's own `simplify()` reads a label),
+  with the row's `category` — against the simplified `brand`, `name` and
+  `matchNames` of the `nsi_brands` rows of the same primary tag. A row with no
+  category matches on the label alone.
+- **Ambiguity is a refusal:** a key reaching two distinct QIDs resolves
+  nothing (spec 02 §8.4 asked for this rule before `matchNames` could join).
+- **`nsi_brands` keeps `matchNames`** in a `match_names text[]` column, for
+  this lookup only. `nsi_match` and `nsi_case_fix` do not read them: a
+  `matchName` is lowercase by convention and would read as a case error.
+
 ---
 
 ## 8. Receipt
@@ -359,6 +384,12 @@ One reviewable step each, each green (ruff, `pyright --strict`, suite):
 6. **Calibration**: `scripts/calibrate_atp_tags.py` — per-(spider, tag)
    agreement over matched pairs, writing `atp_writable_tags` (§6). Needs
    slices 2–4 to have run once; measures what they produce.
+
+7. **NSI loader keeps `matchNames`** (§7a): migration adding
+   `nsi_brands.match_names`, `select_items` carrying them, tests.
+8. **QID recovery at ATP import** (§7a): `nsi-import` ahead of `atp-import`,
+   the NSI stamp in the ATP guard, the lookup in the `atp_places` build, tests
+   on the throwaway database.
 
 Each slice MERGE-worthy independently; none leaves the site broken
 mid-sequence (columns bridged before they are read).

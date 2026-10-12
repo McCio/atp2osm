@@ -295,6 +295,32 @@ def test_overseas_only_brands_are_kept() -> None:
     assert [row[1] for row in select_items(nsi)] == ["Sol"]
 
 
+def test_match_names_ride_along_and_default_to_none() -> None:
+    """`matchNames` recognise an item, they are never written: the row keeps
+    them apart from the tags (specs/07 §7a).
+    """
+    nsi = _nsi(
+        {
+            "brands/amenity/fuel": _category(
+                _item(
+                    {"brand": "Vega Carburanti", "brand:wikidata": "Q66087902", "amenity": "fuel"},
+                    {"include": ["fr"]},
+                    matchNames=["vega"],
+                ),
+                _item(
+                    {"brand": "Sol", "brand:wikidata": "Q3488375", "amenity": "fuel"},
+                    {"include": ["fr"]},
+                ),
+            )
+        }
+    )
+
+    assert {row[1]: row[6] for row in select_items(nsi)} == {
+        "Vega Carburanti": ["vega"],
+        "Sol": [],
+    }
+
+
 def test_stamp_changes_with_the_deployed_revision(monkeypatch: pytest.MonkeyPatch) -> None:
     """A new revision is a new import, whatever NSI published.
 
