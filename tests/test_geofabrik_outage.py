@@ -182,7 +182,7 @@ def _download_pbf_with(
     monkeypatch.setattr(osm, "newest_geofabrik_timestamp", lambda: ts)
     monkeypatch.setattr(osm, "connect", _FakeConn)
 
-    def last_date(_conn: object, _kind: str) -> datetime:
+    def last_date(_conn: object, _kind: str, *, forced: bool = False) -> datetime:
         return ts
 
     def no_start(_conn: object, _kind: str) -> None:
@@ -255,7 +255,7 @@ REGION = region(
 def test_the_state_file_is_read_with_its_escaped_colons(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         osm,
-        "_session",
+        "_probe_session",
         _Http(
             state="# original OSM minutely replication sequence number 6543210\n"
             "sequenceNumber=4321\ntimestamp=2026-08-27T20\\:21\\:02Z\n"
@@ -265,14 +265,14 @@ def test_the_state_file_is_read_with_its_escaped_colons(monkeypatch: pytest.Monk
 
 
 def test_a_region_without_a_state_file_dates_its_pbf(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(osm, "_session", _Http(last_modified="Thu, 27 Aug 2026 20:21:02 GMT"))
+    monkeypatch.setattr(osm, "_probe_session", _Http(last_modified="Thu, 27 Aug 2026 20:21:02 GMT"))
     assert osm.geofabrik_timestamp(REGION) == datetime(2026, 8, 27, 20, 21, 2, tzinfo=UTC)
 
 
 def test_a_state_file_without_a_timestamp_falls_back_too(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         osm,
-        "_session",
+        "_probe_session",
         _Http(state="sequenceNumber=1\n", last_modified="Thu, 27 Aug 2026 20:21:02 GMT"),
     )
     assert osm.geofabrik_timestamp(REGION).day == 27
@@ -280,6 +280,46 @@ def test_a_state_file_without_a_timestamp_falls_back_too(monkeypatch: pytest.Mon
 
 def test_no_date_at_all_is_an_error_the_probe_reports(monkeypatch: pytest.MonkeyPatch) -> None:
     """Not a date: the region counts as down, and download_pbf decides."""
-    monkeypatch.setattr(osm, "_session", _Http())
+    monkeypatch.setattr(osm, "_probe_session", _Http())
     with pytest.raises(ValueError, match="Cannot determine"):
         osm.geofabrik_timestamp(REGION)
+
+
+def test_an_outage_mid_download_drops_the_regions_already_downloaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """osm-import would refuse the partial set and stop the ATP branch with it.
+
+    Production, 2026-10-01: every Geofabrik PBF answered a redirect to itself.
+    """
+    france, wallis = tmp_path / "france.pbf", tmp_path / "wallis.pbf"
+    monkeypatch.setattr(
+        osm,
+        "GEOFABRIK_REGIONS",
+        {
+            "france": region(url="france", pbf_path=france),
+            "wallis": region(url="wallis", pbf_path=wallis),
+        },
+    )
+    monkeypatch.setattr(
+        osm, "newest_geofabrik_timestamp", lambda: datetime(2026, 10, 1, tzinfo=UTC)
+    )
+    monkeypatch.setattr(osm, "connect", _FakeConn)
+
+    def nothing(*_a: object, **_kw: object) -> None:
+        return None
+
+    monkeypatch.setattr(osm, "last_import_date", nothing)
+    monkeypatch.setattr(osm, "start_import", nothing)
+
+    def download(url: str, destination: Path, **_kw: object) -> None:
+        if url == "wallis":
+            raise SourceUnavailableError("Geofabrik unreachable: Exceeded 30 redirects.")
+        destination.write_bytes(b"x")
+
+    monkeypatch.setattr(osm, "download_large_file", download)
+
+    with pytest.raises(SourceUnavailableError):
+        osm.download_pbf()
+    assert not france.exists()
+    assert not wallis.exists()

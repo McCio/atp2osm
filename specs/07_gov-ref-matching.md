@@ -141,7 +141,7 @@ MAP_FROM_ENTRIES(LIST_TRANSFORM(
   property key no entry names is simply not read.
 - `ATP_PLACES_INDEXES` gains a GIN index on `identifiers`.
 - **Bridging migration required** (AGENTS.md, "Pipeline tables and the
-  site"), `033_atp_places_identifiers.sql`: `ALTER TABLE IF EXISTS atp_places
+  site"), `034_atp_places_identifiers.sql`: `ALTER TABLE IF EXISTS atp_places
   ADD COLUMN IF NOT EXISTS identifiers JSONB DEFAULT '{}'::jsonb;` and the
   same for `writable_tags`. `IF EXISTS` because a fresh instance migrates
   before its first refresh has built the table. The matching SQL tolerates
@@ -167,6 +167,12 @@ and `text = jsonb` does not type-check. On an empty map it yields no rows,
 `EXISTS` is false, unconfigured POIs are untouched. OSM side needs no column: `osm.tags` is
 already in `mv_places`, and the tags a config may name (`ref:mise`,
 `ref:vat`, `ref`) are all in `tags` — the filter below keeps them (§4d).
+
+The arm sits in the flat OR that lets the planner serve the other keys from
+their indexes, and an identifier pair equal is recorded as `identifier`, the
+first entry of the row's `matched_keys`. No index serves it: the identifier
+arm is tested on every pair within the radius, so time the `mv_matches`
+build on a whole country before relying on it.
 
 An identifier is exact, and the query treats it as exact in three more places
 — the receipt (§8) measured 421 of 2 334 identifier-equal objects paired with

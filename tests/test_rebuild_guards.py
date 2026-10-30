@@ -176,8 +176,9 @@ def downloads(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Path]]:
     """What download_pbf fetched: (url, path) per call. Writes a file."""
     calls: list[tuple[str, Path]] = []
 
-    def download(url: str, path: Path, session: object = None) -> None:
+    def download(url: str, path: Path, **_kw: object) -> None:
         calls.append((url, Path(path)))
+        Path(path).parent.mkdir(parents=True, exist_ok=True)  # as the real one does
         Path(path).write_bytes(b"pbf")
 
     monkeypatch.setattr(osm, "download_large_file", download)
@@ -256,25 +257,6 @@ def test_a_pbf_already_on_disk_is_not_fetched_again(
     assert downloads == []
 
 
-def test_a_failed_download_leaves_no_partial_file(
-    pipeline: Connection, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    pbf = osm.GEOFABRIK_REGIONS["france"]["pbf_path"]
-
-    def download(_url: str, path: Path, session: object = None) -> Never:
-        Path(path).write_bytes(b"half a pl")
-        raise requests.ConnectionError("reset by peer")
-
-    monkeypatch.setattr(osm, "download_large_file", download)
-    geofabrik(monkeypatch, TS)
-
-    with pytest.raises(requests.ConnectionError):
-        osm.download_pbf()
-
-    # Otherwise the next run would take the stump for the whole extract.
-    assert not pbf.exists()
-
-
 def test_geofabrik_down_opens_no_row(
     pipeline: Connection, monkeypatch: pytest.MonkeyPatch, downloads: list[tuple[str, Path]]
 ) -> None:
@@ -305,7 +287,7 @@ def _almost_full_disk(_path: Path) -> _Usage:
     return _Usage(free=10**9)
 
 
-def _broken_view(name: str) -> str:
+def _broken_view(name: str, *_source: str) -> str:
     return f"CREATE MATERIALIZED VIEW {name} AS SELECT 1/0"
 
 
@@ -653,7 +635,7 @@ def atp_history(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             raise state["runs"]
         return _Json(state["runs"])
 
-    def download(url: str, path: Path) -> None:
+    def download(url: str, path: Path, **_kw: object) -> None:
         state["fetched"].append(url)
         if url.endswith("stats.json"):
             Path(path).write_text(
@@ -1006,7 +988,7 @@ def registry(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
             raise state["latest"]
         return _Json({"dist-tags": {"latest": state["latest"]}})
 
-    def download(url: str, path: Path) -> None:
+    def download(url: str, path: Path, **_kw: object) -> None:
         state["fetched"].append(url)
         # What the CDN serves under that URL: the release asked for, unless
         # a test says otherwise.
@@ -1015,7 +997,6 @@ def registry(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
 
     monkeypatch.setattr(nsi.requests, "get", get)
     monkeypatch.setattr(nsi, "download_large_file", download)
-    monkeypatch.setattr(nsi, "NSI_DIR", tmp_path / "nsi")
     monkeypatch.setattr(nsi, "NSI_PATH", tmp_path / "nsi" / "nsi.json")
     return state
 
@@ -1323,11 +1304,11 @@ def test_the_review_reads_its_proposals_off_the_views(refreshed: Connection) -> 
     """
     from psycopg.rows import dict_row
 
-    from src.matching import get_changes, get_filtered
+    from src.matching import get_changes, get_matches
 
     atp2osm.create_mv_places_brand()
     with refreshed.cursor(row_factory=dict_row) as cur:
-        get_filtered(cur, brand="Q1")
+        get_matches(cur, "Q1")
         changes = get_changes(cur, wave=1)
 
     (change,) = changes

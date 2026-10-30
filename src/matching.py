@@ -75,14 +75,18 @@ class Stats(TypedDict):
     by_subdivision: dict[str, dict[str, str | int]]
 
 
-# The one ATP <-> OSM matching query, shared by /validate (get_filtered) and by
-# the mv_places_brand materialized view that feeds the counter on the brand
-# list. Both MUST stay on the same SQL: two diverging copies are what once made
-# the list show 50 POIs and /validate 60.
+# The one ATP <-> OSM matching query. The pipeline materializes it once as
+# mv_matches, which /validate reads (get_matches) and the counters of the brand
+# and spider lists aggregate: two diverging copies are what once made the list
+# show 50 POIs and /validate 60. Run live, it costs 37 s on a brand of 3 000
+# matches — the spatial join, and the normalizations below on every row.
 #
 # Deduplication includes atp_brand_wikidata: a single OSM object can match two
 # different brands, and must then be counted for each one (like /validate does,
 # which filters on a single brand).
+#
+# Every column is named once: a materialized view refuses two of the same
+# name, and both tables carry brand, phone, postcode…
 #
 # `matched_poi_sql()` fills the radius, which the country sets: 500 m is
 # calibrated on European urban density, and a country whose POIs sit further
@@ -90,10 +94,25 @@ class Stats(TypedDict):
 MATCHED_POI_SQL: Final = """
     WITH joined_poi AS (
     SELECT
-        *,
-        osm.tags as old_tags,
+        osm.osm_id,
+        osm.node_type,
+        osm.version,
+        osm.osm_timestamp,
+        osm.members,
+        osm.tags,
+        osm.nsi_tags,
+        osm.brand_wikidata_source,
         ST_X(ST_Centroid(osm.geom)) AS lon,
         ST_Y(ST_Centroid(osm.geom)) AS lat,
+        atp.id,
+        atp.brand,
+        atp.brand_wikidata AS atp_brand_wikidata,
+        atp.postcode,
+        atp.spider_id,
+        atp.source_type,
+        atp.source_uri,
+        atp.subdivision_code,
+        atp.subdivision_name,
         -- Written the way OSM writes it (normalize_opening_hours), the days
         -- ATP knows closed included: what is compared below is what gets
         -- written, minus those.
@@ -101,11 +120,6 @@ MATCHED_POI_SQL: Final = """
         atp.phone as atp_phone,
         atp.email as atp_email,
         atp.website as atp_website,
-        atp.country as atp_country,
-        atp.city as atp_city,
-        atp.source_uri as atp_source_uri,
-        atp.brand as atp_brand,
-        atp.brand_wikidata as atp_brand_wikidata,
         (
             (atp.opening_hours IS NOT NULL AND osm.opening_hours IS NULL)
             OR (atp.email   IS NOT NULL AND osm.email   IS NULL)
@@ -182,12 +196,14 @@ MATCHED_POI_SQL: Final = """
             ) AS t(key, atp_value, differs)
             WHERE t.atp_value IS NOT NULL AND t.differs
         ) AS modifiable_tags,
+        -- Which of the keys held for this pair: the very array the WHERE
+        -- below filters on, so what an audit reads and what the join accepts
+        -- can never disagree. In declaration order, so a distribution
+        -- grouped by it sorts by how much each key carries the matches.
+        mk.matched_keys,
         -- An identifier pair equal: the one candidate the source itself names.
         -- It outranks the nearest one and is never dropped as ambiguous (below).
-        EXISTS (
-            SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
-            WHERE osm.tags->>i.tag = i.value
-        ) AS identifier_match,
+        'identifier' = ANY(mk.matched_keys) AS identifier_match,
         ST_Distance(osm.geom::geography, ST_GeomFromGeoJSON(atp.geom)::geography) AS atp_distance,
         count(*) FILTER (WHERE osm.node_type = 'node')                 OVER (PARTITION BY atp.id) AS pt_cnt,
         count(*) FILTER (WHERE osm.node_type IN ('way', 'relation'))   OVER (PARTITION BY atp.id) AS poly_cnt
@@ -199,44 +215,73 @@ MATCHED_POI_SQL: Final = """
             ST_GeomFromGeoJSON(atp.geom)::geography,
             {match_radius_m}
         )
-    WHERE
-        {where_options} AND
-        (
+    -- A lateral selector: WHERE cannot name a SELECT alias, so the array is
+    -- built once here and read twice — filtered on below, carried out with
+    -- the row. A key therefore can never filter without being recorded, nor
+    -- be recorded without filtering. A comparison with NULL yields NULL:
+    -- the CASE then stands for nothing and ARRAY_REMOVE drops it, so a NULL
+    -- value keeps a pair apart the way it always did.
+    CROSS JOIN LATERAL (
+        SELECT ARRAY_REMOVE(ARRAY[
             -- An identifier names the place itself: any pair equal joins.
             -- The map is empty for a POI no configuration vouches for, and
             -- jsonb_each_text of it yields no row.
+            CASE WHEN EXISTS (
+                SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
+                WHERE osm.tags->>i.tag = i.value
+            ) THEN 'identifier' END,
+            CASE WHEN osm.brand_wikidata = atp.brand_wikidata THEN 'brand:wikidata' END,
+            CASE WHEN LOWER(osm.brand) = LOWER(atp.brand) THEN 'brand' END,
+            -- A name alone matches whatever else carries it nearby: the
+            -- board that signs the place, the landuse around it, anything
+            -- named after the same commune. Both sides know their primary
+            -- tag, so it has to be the same one — and when ATP carries none
+            -- (a POI in twenty), the name stands on its own as it always
+            -- did.
+            CASE WHEN
+                LOWER(osm.name) = LOWER(atp."name")
+                -- Cast: the DuckDB import writes the column as varchar[],
+                -- the migration that added it to the live table as text[].
+                AND (atp.category IS NULL
+                     OR atp.category::text[] = osm_primary_tag(osm.tags))
+            THEN 'name' END,
+            CASE WHEN LOWER(osm.email) = LOWER(atp.email) THEN 'email' END,
+            CASE WHEN LOWER(REGEXP_REPLACE(osm.website, '^https?://', '', 'i')) = LOWER(REGEXP_REPLACE(atp.website, '^https?://', '', 'i')) THEN 'website' END,
+            CASE WHEN normalize_phone(osm.phone) = normalize_phone(atp.phone) THEN 'phone' END
+        ], NULL) AS matched_keys
+    ) AS mk
+    -- The same keys as a flat OR: the planner reads it as a BitmapOr over
+    -- the mv_places key indexes, ANDed with the spatial one, so only pairs
+    -- sharing a key are ever compared — about 17 minutes on France. The
+    -- cardinality test keeps the array the judge: a pair the OR lets
+    -- through and no key records stays out. The identifier arm reads the
+    -- tags map, which no index serves: it is the pairs within the radius
+    -- that it is tested on.
+    WHERE (
             EXISTS (
                 SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
                 WHERE osm.tags->>i.tag = i.value
             )
+            OR osm.brand_wikidata = atp.brand_wikidata
+            OR LOWER(osm.brand) = LOWER(atp.brand)
             OR (
-                -- No pair is equal here. An object that carries one of the
-                -- POI's identifier tags with another value is another place,
-                -- whatever brand or name says; one lacking the tag is not.
-                NOT EXISTS (
-                    SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
-                    WHERE osm.tags ? i.tag AND osm.tags->>i.tag <> i.value
-                )
-                AND (
-                    osm.brand_wikidata = atp.brand_wikidata
-                    OR LOWER(osm.brand) = LOWER(atp.brand)
-                    -- A name alone matches whatever else carries it nearby: the
-                    -- board that signs the place, the landuse around it, anything
-                    -- named after the same commune. Both sides know their primary
-                    -- tag, so it has to be the same one — and when ATP carries none
-                    -- (a POI in twenty), the name stands on its own as it always
-                    -- did.
-                    OR (
-                        LOWER(osm.name) = LOWER(atp."name")
-                        -- Cast: the DuckDB import writes the column as varchar[],
-                        -- the migration that added it to the live table as text[].
-                        AND (atp.category IS NULL
-                             OR atp.category::text[] = osm_primary_tag(osm.tags))
-                    )
-                    OR LOWER(osm.email) = LOWER(atp.email)
-                    OR LOWER(REGEXP_REPLACE(osm.website, '^https?://', '', 'i')) = LOWER(REGEXP_REPLACE(atp.website, '^https?://', '', 'i'))
-                    OR normalize_phone(osm.phone) = normalize_phone(atp.phone)
-                )
+                LOWER(osm.name) = LOWER(atp."name")
+                AND (atp.category IS NULL
+                     OR atp.category::text[] = osm_primary_tag(osm.tags))
+            )
+            OR LOWER(osm.email) = LOWER(atp.email)
+            OR LOWER(REGEXP_REPLACE(osm.website, '^https?://', '', 'i')) = LOWER(REGEXP_REPLACE(atp.website, '^https?://', '', 'i'))
+            OR normalize_phone(osm.phone) = normalize_phone(atp.phone)
+        )
+        AND cardinality(mk.matched_keys) > 0
+        -- No identifier pair is equal here: an object that carries one of the
+        -- POI's identifier tags with another value is another place, whatever
+        -- brand or name says; one lacking the tag is not.
+        AND (
+            'identifier' = ANY(mk.matched_keys)
+            OR NOT EXISTS (
+                SELECT 1 FROM jsonb_each_text(atp.identifiers) AS i(tag, value)
+                WHERE osm.tags ? i.tag AND osm.tags->>i.tag <> i.value
             )
         )
     )
@@ -246,21 +291,22 @@ MATCHED_POI_SQL: Final = """
     WHERE identifier_match OR (pt_cnt <= 1 AND poly_cnt <= 1)
     -- A row that still has something to add first: a registry row that
     -- already wrote its tags must not shadow, run after run, another
-    -- source's row of the same brand. Then the identifier, then the nearest.
+    -- source's row of the same brand. Then the identifier, then the nearest;
+    -- `id` breaks the ties — two ATP POIs inside one polygon both lie 0 m
+    -- away — so that every rebuild pairs the object with the same POI.
     ORDER BY osm_id, node_type, atp_brand_wikidata,
-             is_importable DESC, identifier_match DESC, atp_distance
+             is_importable DESC, identifier_match DESC, atp_distance, id
 """
 
 
-def matched_poi_sql(where_options: LiteralString = "TRUE") -> sql.Composed:
-    """The matching query, ready to run: its filters and the country's radius.
+def matched_poi_sql() -> sql.Composed:
+    """The matching query, ready to run: the country's radius filled in.
 
     One `format` call, never two: the SQL escapes its own braces (`'{{}}'::jsonb`)
     and a second pass would unescape them into replacement fields. The radius
     comes from the configuration, so it goes in as a literal.
     """
     return sql.SQL(MATCHED_POI_SQL).format(
-        where_options=sql.SQL(where_options),
         match_radius_m=sql.Literal(get_country().match_radius_m),
     )
 
@@ -305,27 +351,17 @@ def waves_lateral_sql() -> sql.Composed:
     )
 
 
-def get_filtered(
-    cursor: DictCursor,
-    brand: str | None = None,
-    postcode: str | None = None,
-    subdivision_code: str | None = None,
-) -> DictCursor:
-    options: list[LiteralString] = []
-    params: list[str] = []
-    if brand:
-        options.append("atp.brand_wikidata = %s")
-        params.append(brand)
-    if postcode:
-        options.append("atp.postcode = %s")
-        params.append(postcode)
-    if subdivision_code:
-        options.append("atp.subdivision_code = %s")
-        params.append(subdivision_code)
+def get_matches(cursor: DictCursor, brand_wikidata: str) -> DictCursor:
+    """Every match of a brand, as the last refresh materialized them.
 
-    query = matched_poi_sql(" AND ".join(options) or "TRUE")
-
-    return cursor.execute(query, params)
+    Ordered: select_batch() cuts an oversized subdivision at max_size, and two
+    reviews of a brand, a reload or a filter apart, must cut it at the same
+    POIs.
+    """
+    return cursor.execute(
+        "SELECT * FROM mv_matches WHERE atp_brand_wikidata = %s ORDER BY osm_id, node_type",
+        (brand_wikidata,),
+    )
 
 
 # Cooldowns: how long an import keeps hiding what it just touched, until the
@@ -877,8 +913,8 @@ def category_key(change: LoggedChange) -> str:
 def exclude_categories(changes: Sequence[Change], excluded: Collection[str]) -> list[Change]:
     """The changes whose primary tag the reviewer did not take out.
 
-    Applied on the matches, before the batch is composed: a type left out
-    frees its room for another POI rather than shrinking the batch.
+    Applied on the composed batch, which it shrinks: the batch sent is the one
+    the review offered, minus what the reviewer took out.
     """
     return [c for c in changes if category_key(c) not in excluded]
 

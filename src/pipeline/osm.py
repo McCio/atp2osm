@@ -38,24 +38,38 @@ from src.utils import delete_file_if_exists, download_large_file
 
 logger = logging.getLogger(__name__)
 
-# Geofabrik hands out 502/503 for a few minutes at a time, and sometimes lets
-# a TLS handshake hang. Retry with backoff instead of failing the whole
-# nightly run on a transient blip. Connection errors are retried too; a read
-# timeout mid-stream is not, it would restart a multi-GB download from scratch.
-_session = requests.Session()
-_session.mount(
-    "https://",
-    HTTPAdapter(
-        max_retries=Retry(
-            total=5,
-            connect=5,
-            read=0,
-            backoff_factor=5,  # waits 0, 5, 10, 20, 40s
-            status_forcelist=(429, 500, 502, 503, 504),
-            allowed_methods=("GET", "HEAD"),
-        )
-    ),
-)
+
+def _geofabrik_session(read: int) -> requests.Session:
+    """Geofabrik hands out 502/503 for a few minutes at a time, and sometimes
+    lets a TLS handshake hang: retry with backoff instead of failing the whole
+    nightly run on a transient blip. *read* is how many times a response slow
+    to send its headers is asked again. urllib3 retries only up to the
+    headers: a read timeout mid-stream is never retried, whatever *read* says.
+    """
+    session = requests.Session()
+    session.mount(
+        "https://",
+        HTTPAdapter(
+            max_retries=Retry(
+                total=5,
+                connect=5,
+                read=read,
+                backoff_factor=5,  # waits 0, 5, 10, 20, 40s
+                status_forcelist=(429, 500, 502, 503, 504),
+                allowed_methods=("GET", "HEAD"),
+            )
+        ),
+    )
+    return session
+
+
+# Under load Geofabrik takes minutes to send the headers of a PBF; the night
+# it did, the download died on the eighth region.
+_session = _geofabrik_session(read=5)
+# The probe asks every region for a few hundred bytes, and the OSM branch waits
+# for its answer: asked again on every slow response, an outage held the branch
+# back 23 minutes. A region that does not answer in time counts as down.
+_probe_session = _geofabrik_session(read=0)
 
 
 def geofabrik_timestamp(region: Region) -> datetime:
@@ -65,7 +79,7 @@ def geofabrik_timestamp(region: Region) -> datetime:
     header of the PBF file for regions that don't publish a state file.
     """
     try:
-        resp = _session.get(region["state_url"], timeout=30)
+        resp = _probe_session.get(region["state_url"], timeout=30)
         resp.raise_for_status()
         for line in resp.text.splitlines():
             if line.startswith("timestamp="):
@@ -75,7 +89,7 @@ def geofabrik_timestamp(region: Region) -> datetime:
         logger.debug("No state.txt for %s, reading Last-Modified", region["url"], exc_info=True)
 
     # Fallback: Last-Modified header on the PBF file
-    resp = _session.head(region["url"], timeout=30, allow_redirects=True)
+    resp = _probe_session.head(region["url"], timeout=30, allow_redirects=True)
     resp.raise_for_status()
     last_modified = resp.headers.get("Last-Modified")
     if last_modified:
@@ -167,11 +181,14 @@ def download_pbf() -> None:
             logger.info("PBF %s already present, skipping", name)
             continue
         logger.info("Downloading %s...", name)
-        pbf_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            download_large_file(region["url"], pbf_path, session=_session)
-        except Exception:
-            delete_file_if_exists(pbf_path)
+            download_large_file(region["url"], pbf_path, source="Geofabrik", session=_session)
+        except SourceUnavailableError:
+            # osm-import refuses a partial set, and its failure would stop the
+            # ATP branch too. With no PBF at all it keeps the current tables,
+            # as it does when Geofabrik is already down at the timestamp check.
+            for downloaded in GEOFABRIK_REGIONS.values():
+                delete_file_if_exists(downloaded["pbf_path"])
             raise
         logger.info("Downloaded %s", name)
 
@@ -273,14 +290,6 @@ def _import_pbfs() -> None:
             "Refusing a partial osm2pgsql --create: missing " + ", ".join(p.name for p in missing)
         )
 
-    # Fast-fail on low disk before hours of import.
-    # Heuristic: need ~3x total PBF size (tables + indexes + temp), floor 15 GB.
-    # Override the floor with OSM2PGSQL_MIN_FREE_GB.
-    total_pbf = sum(p.stat().st_size for p in pbf_paths)
-    floor = get_pipeline().min_free_gb * 1e9
-    needed = max(floor, 3 * total_pbf)
-    _require_free_space(pbf_paths[0].parent, needed)
-
     db = get_database()
     conn = connect()
     try:
@@ -292,6 +301,16 @@ def _import_pbfs() -> None:
         conn.commit()
     finally:
         conn.close()
+
+    # Fast-fail on low disk before hours of import. Measured once the import
+    # schema is gone: an interrupted run leaves its tables there, and their
+    # space is free again for this one.
+    # Heuristic: need ~3x total PBF size (tables + indexes + temp), floor 15 GB.
+    # Override the floor with OSM2PGSQL_MIN_FREE_GB.
+    total_pbf = sum(p.stat().st_size for p in pbf_paths)
+    floor = get_pipeline().min_free_gb * 1e9
+    needed = max(floor, 3 * total_pbf)
+    _require_free_space(pbf_paths[0].parent, needed)
 
     logger.info("Importing %d PBF file(s) into PostGIS...", len(pbf_paths))
     env = os.environ.copy()

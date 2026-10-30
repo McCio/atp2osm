@@ -34,7 +34,6 @@ from psycopg.rows import dict_row
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 from src.config import get_country, get_database
-from src.matching import matched_poi_sql
 from src.pipeline.constants import PARQUET_PATH
 
 # What the source exports and OSM carries, per tag: the source's value as text.
@@ -140,7 +139,12 @@ def matched_pairs(spiders: list[str]) -> list[tuple[str, str, Tags]]:
     """(ATP id, spider, OSM tags) for every match of those spiders (every spider
     when none is named), as /validate sees them.
     """
-    query = matched_poi_sql("atp.spider_id = ANY(%s)" if spiders else "TRUE")
+    # Read off the materialized matches, the very rows /validate reads.
+    query = (
+        "SELECT id, spider_id, old_tags FROM mv_matches WHERE spider_id = ANY(%s)"
+        if spiders
+        else "SELECT id, spider_id, old_tags FROM mv_matches"
+    )
     with (
         psycopg.connect(get_database().conninfo) as conn,
         conn.cursor(row_factory=dict_row) as cur,

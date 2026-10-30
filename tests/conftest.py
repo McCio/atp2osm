@@ -337,8 +337,9 @@ def web_app(migrated_conn: Connection, test_db: Database, monkeypatch: pytest.Mo
     app.config["CACHE_TYPE"] = "SimpleCache"
     cache.init_app(app)  # pyright: ignore[reportUnknownMemberType] — see src/extensions.py
     # No translated path: the pages answer on their bare URL, no language
-    # redirect to follow.
-    i18n.init_app(app, settings.country.locales, (), settings.country.timezone)
+    # redirect to follow. English, the language of the source strings: the
+    # tests read the templates, not a catalog compiled or not on this machine.
+    i18n.init_app(app, ("en",), (), settings.country.timezone)
     templating.init_app(app, settings)
     for blueprint in (
         auth_bp,
@@ -364,6 +365,16 @@ def contributor(web_app: Flask) -> Iterator[FlaskClient]:
             sess["user"] = {"osm_id": 42, "name": "reviewer"}
             sess["token"] = {"access_token": "x"}
         yield client
+
+
+def reviewed(client: FlaskClient, brand_wikidata: str) -> str:
+    """The batch /validate offered, by the id its next step carries — the only
+    batch /confirm and /upload take.
+    """
+    page = client.get(f"/brands/{brand_wikidata}/validate").text
+    _, found, rest = page.partition(f"/brands/{brand_wikidata}/confirm?batch=")
+    assert found, "the review offered no batch"
+    return rest.split('"', 1)[0]
 
 
 @pytest.fixture
